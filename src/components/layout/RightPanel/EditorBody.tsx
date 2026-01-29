@@ -1,37 +1,68 @@
+// src/components/layout/RightPanel/EditorBody.tsx
 "use client";
 
-import React from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { keymap, EditorView } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
+
+// 1. Import Provider ของเรา
 import { usePipeline } from "@/components/workspace/PipelineProvider";
 
 export default function EditorBody() {
-  const { yaml, setYaml } = usePipeline();
+  // 2. ดึง fileContent
+  const { fileContent, setFileContent, selectedFile } = usePipeline();
 
-  // เก็บสำเนาใน local เพื่อลดการ re-render และไม่ให้เคอร์เซอร์กระโดด
-  const [doc, setDoc] = React.useState(yaml);
+  // ✅ FIX 1: แปลงค่าให้เป็น String เสมอ
+  const safeContent = typeof fileContent === "string" ? fileContent : "";
 
-  // ถ้า yaml จาก context เปลี่ยน (กดสวิตช์/ปุ่มฝั่งซ้าย)
-  // ค่อย sync เข้ามาเฉพาะตอน content ต่างจริง ๆ
-  React.useEffect(() => {
-    if (yaml !== doc) setDoc(yaml);
-  }, [yaml, doc]);
+  // Local State สำหรับ Editor (เพื่อให้พิมพ์ลื่น ไม่รอ Context)
+  const [doc, setDoc] = useState(safeContent);
 
-  // debounce การอัปเดต context (กันยิง setYaml ถี่เกิน)
-  const t = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const updateUpstream = React.useCallback((next: string) => {
-    if (t.current) clearTimeout(t.current);
-    t.current = setTimeout(() => setYaml(next), 120);
-  }, [setYaml]);
+  // ✅ FIX 2: Sync ข้อมูล 'ขาเข้า' (จาก DB/GitHub)
+  // จะทำงานก็ต่อเมื่อ "เปลี่ยนไฟล์ใหม่" หรือ "ค่า safeContent เปลี่ยนแบบก้าวกระโดด" (เช่น โหลดเสร็จ)
+  // เราจะไม่ใส่ [fileContent] ตรงๆ เพื่อป้องกัน Loop ตอนพิมพ์
+  useEffect(() => {
+    setDoc(safeContent);
+  }, [selectedFile, safeContent]); 
+  // หมายเหตุ: การใส่ safeContent ตรงนี้ไม่อันตรายเพราะเรามี debounce ขาออกช่วยหน่วงไว้
+  // แต่ถ้ายังกระตุก สามารถเอา safeContent ออก แล้วใช้ key={selectedFile} แทนได้
+
+  // Debounce Ref
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ✅ FIX 3: Sync ข้อมูล 'ขาออก' (ไปเก็บใน Context/DB)
+  const handleChange = useCallback((val: string) => {
+    // 1. อัปเดตหน้าจอทันที (คนใช้งานจะรู้สึกว่าลื่น)
+    setDoc(val);
+
+    // 2. หน่วงเวลาส่งไปเก็บใน Context (ลดการ Re-render ของแม่)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setFileContent(val);
+    }, 300); // เพิ่มเวลาเป็น 300ms ให้พิมพ์ต่อเนื่องได้เนียนขึ้น
+  }, [setFileContent]);
+
+  // หน้าจอตอนยังไม่เลือกไฟล์
+  if (!selectedFile) {
+    return (
+      <div className="h-full w-full bg-[#282c34] flex flex-col items-center justify-center text-slate-500 select-none">
+        <div className="text-4xl mb-2">👋</div>
+        <p className="text-sm">Select a file (📂) or create new (+)</p>
+        <p className="text-xs opacity-50 mt-1">to start editing pipeline</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full bg-[#282c34]">
       <CodeMirror
+        // ✅ FIX 4: ใส่ key เพื่อบังคับให้ Editor สร้างใหม่เมื่อเปลี่ยนไฟล์ (แก้บั๊กแสดงข้อมูลไฟล์เก่าค้าง)
+        key={selectedFile} 
         value={doc}
-        height="calc(90vh - 220px)" // ปรับตาม layout
+        height="100%"
         theme={oneDark}
         basicSetup={{
           lineNumbers: true,
@@ -49,20 +80,22 @@ export default function EditorBody() {
               key: "Mod-s",
               preventDefault: true,
               run: () => {
-                // ตรงนี้จะเป็น future: save ฯลฯ
+                console.log("Save Triggered (Ctrl+S)");
+                // ถ้าอยากให้กด Ctrl+S แล้วเซฟทันทีโดยไม่รอ debounce
+                setFileContent(doc); 
                 return true;
               },
             },
           ]),
-          EditorView.lineWrapping, // พับบรรทัดอัตโนมัติ
+          EditorView.lineWrapping, 
         ]}
-        onChange={(next) => {
-          // อัปเดตจอทันที + ค่อยยิงขึ้น context แบบ debounce
-          setDoc(next);
-          updateUpstream(next);
+        onChange={handleChange}
+        style={{ 
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", 
+            fontSize: 14, 
+            height: "100%" 
         }}
-        // ปิดแสงขอบ Editor
-        style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 14, borderRadius: 12, overflow: "hidden" }}
+        className="h-full"
       />
     </div>
   );

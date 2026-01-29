@@ -7,45 +7,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==========================================
+// 1. ส่วน Authentication (BetterAuth & User)
+// ==========================================
+
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified Boolean?
   image         String?
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @default(now()) @updatedAt
-  sessions      Session[]
-  accounts      Account[]
+  updatedAt     DateTime  @updatedAt
 
-  @@unique([email])
+  accounts      Account[]
+  sessions      Session[]
+  
+  // ความสัมพันธ์กับโปรเจกต์
+  repositories  Repository[]
+  pipelines     Pipeline[]
+
   @@map("user")
 }
 
-model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([token])
-  @@map("session")
-}
-
 model Account {
-  id                    String    @id
+  id                    String    @id @default(cuid())
+  userId                String
   accountId             String
   providerId            String
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
   refreshToken          String?
-  idToken               String?
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
@@ -53,17 +44,123 @@ model Account {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("account")
 }
 
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
 model Verification {
-  id         String   @id
+  id         String   @id @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
+  updatedAt  DateTime @updatedAt
 
   @@map("verification")
 }
 
+// ==========================================
+// 2. ส่วน Application Core (Repository & Pipeline)
+// ==========================================
+
+model Repository {
+  id             String   @id @default(cuid())
+  userId         String
+  fullName       String   // เช่น "pongsakorn/devsecops-project"
+  provider       String   // เช่น "github", "gitlab"
+  providerRepoId String?  // ID จาก Git Provider
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pipelines Pipeline[]
+
+  @@map("repository")
+}
+
+model Pipeline {
+  id          String   @id @default(cuid())
+  repoId      String
+  createdById String
+  name        String   // เช่น "Production Deployment"
+  filePath    String   // เช่น ".github/workflows/main.yml"
+  branch      String   // เช่น "main"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  repository Repository      @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  createdBy  User            @relation(fields: [createdById], references: [id])
+  drafts     PipelineDraft[]
+
+  @@unique([repoId, filePath, branch])
+
+  @@map("pipeline")
+}
+
+model PipelineDraft {
+  id            String   @id @default(cuid())
+  pipelineId    String   @unique
+  configuration String   @db.Text // เก็บ YAML หรือ JSON State ก้อนใหญ่
+  updatedAt     DateTime @updatedAt
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@map("pipeline_draft")
+}
+
+// ==========================================
+// 3. ส่วน Dynamic UI & Syntax Library (หัวใจสำคัญ!)
+// ==========================================
+
+model ComponentCategory {
+  id           String              @id @default(cuid())
+  name         String              // ชื่อโชว์บนเว็บ เช่น "Source Control"
+  slug         String              @unique // ชื่ออ้างอิงในโค้ด เช่น "source_control"
+  displayOrder Int                 // ลำดับการแสดงผล
+  icon         String?             // ชื่อ Icon (Lucide React)
+  
+  components   PipelineComponent[]
+
+  @@map("component_category")
+}
+
+model PipelineComponent {
+  id         String   @id @default(cuid())
+  categoryId String
+  name       String   // ชื่อปุ่ม เช่น "On Push", "Node.js"
+  type       String   // ประเภท UI: "switch", "button", "input"
+  uiConfig   Json?    // เก็บ Config เพิ่มเติม เช่น Label, Default Value
+  
+  category   ComponentCategory @relation(fields: [categoryId], references: [id])
+  syntaxes   ComponentSyntax[]
+
+  @@map("pipeline_component")
+}
+
+model ComponentSyntax {
+  id          String   @id @default(cuid())
+  componentId String
+  platform    String   // "github" หรือ "gitlab"
+  template    String   @db.Text // เก็บ Template YAML ที่มีตัวแปร {{variable}}
+  
+  component   PipelineComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@map("component_syntax")
+}
