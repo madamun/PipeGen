@@ -1,29 +1,26 @@
-// src/components/repo/RepoPicker.tsx
 "use client";
 
 import * as React from "react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, RefreshCw, Star, GitFork, Globe, LockKeyhole, Tag, GitBranch } from "lucide-react";
+import { ChevronDown, RefreshCw, Star, Globe, LockKeyhole, Tag, GitBranch, GitPullRequest } from "lucide-react";
 import { usePipeline } from "@/components/workspace/PipelineProvider";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
+// Type Definition
 type Repo = {
   id: number;
   name: string;
   full_name: string;
   description: string | null;
   private: boolean;
-  visibility?: string;
   default_branch?: string;
-  language?: string;
-  topics?: string[];
   stargazers_count: number;
   forks_count: number;
   owner: { login: string; avatar_url?: string };
-  permissions?: { admin?: boolean; push?: boolean; pull?: boolean };
   updated_at?: string;
+  provider?: "github" | "gitlab";
   _meta?: {
     branchCount: number;
     tagCount: number;
@@ -35,35 +32,45 @@ type Repo = {
 export default function RepoPicker() {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+
   const [me, setMe] = React.useState<{ login: string; avatar_url?: string } | null>(null);
   const [repos, setRepos] = React.useState<Repo[]>([]);
-  const { setSelectedRepo, setSelectedBranch } = usePipeline();
+
+  const { provider, setSelectedRepo, setSelectedBranch } = usePipeline();
 
   async function loadRepos() {
     setLoading(true);
     try {
-      const res = await fetch("/api/github/repos", { cache: "no-store" });
+      const endpoint = provider === 'gitlab'
+        ? "/api/gitlab/repos"
+        : "/api/github/repos";
+
+      const res = await fetch(endpoint, { cache: "no-store" });
       const data = await res.json();
+
       if (!res.ok) throw new Error(data?.error || "Fetch error");
+
       setMe(data.me);
       setRepos(data.repos as Repo[]);
+    } catch (e) {
+      console.error("Load repo error:", e);
+      setRepos([]);
     } finally {
       setLoading(false);
     }
   }
 
   React.useEffect(() => {
-    if (open && repos.length === 0) loadRepos();
+    if (open) loadRepos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, provider]);
 
   const my = React.useMemo(() => repos.filter((r) => r.owner?.login === me?.login), [repos, me?.login]);
   const co = React.useMemo(() => repos.filter((r) => r.owner?.login !== me?.login), [repos, me?.login]);
 
-  // 👉 เลือกการ์ดแล้ว set repo + ตั้ง branch เริ่มต้นเป็น "main" แล้วปิด dialog
   function pick(r: Repo) {
     setSelectedRepo(r);
-    setSelectedBranch("main"); // ตั้ง default เป็น main ตามที่ขอ (จะเปลี่ยนทีหลังได้จากตัวเลือก branch)
+    setSelectedBranch(r.default_branch || "main");
     setOpen(false);
   }
 
@@ -81,61 +88,65 @@ export default function RepoPicker() {
       <DialogContent
         className="!max-w-none !w-[700px] !h-[600px] border border-[#B4CAFD]
                    bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]
-                   text-slate-50"
+                   text-slate-50 flex flex-col p-6"
       >
         <VisuallyHidden>
           <DialogTitle>Select Repository</DialogTitle>
         </VisuallyHidden>
-        
-        <div className="flex items-center justify-between">
-          <Tabs defaultValue="my" className="w-full">
-            <TabsList className="h-10 gap-1 bg-transparent">
-              <TabsTrigger value="my" className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15">
-                My-Project
+
+        <Tabs defaultValue="my" className="w-full flex flex-col h-full">
+          <div className="flex items-center justify-between mb-4 shrink-0 mt-4">
+            <TabsList className="h-10 gap-2 bg-transparent p-0">
+              <TabsTrigger
+                value="my"
+                className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+              >
+                My Projects
               </TabsTrigger>
-              <TabsTrigger value="co" className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15">
-                Co-Project
+              <TabsTrigger
+                value="co"
+                className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+              >
+                Co-Projects
               </TabsTrigger>
             </TabsList>
 
-            <div className="ml-auto -mt-10 flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="bg-white/30 hover:bg-white/20"
-                onClick={loadRepos}
-                disabled={loading}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="bg-white/20 hover:bg-white/30 text-white border-none"
+              onClick={loadRepos}
+              disabled={loading}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
 
-            <div className="max-h-[480px] overflow-y-auto no-scrollbar">
-              {loading ? (
-                <GridSkeleton />
-              ) : (
-                <>
-                  <TabsContent value="my" className="m-0">
-                    <RepoGrid repos={my} onPick={pick} />
-                  </TabsContent>
-                  <TabsContent value="co" className="m-0">
-                    <RepoGrid repos={co} onPick={pick} />
-                  </TabsContent>
-                </>
-              )}
-            </div>
-          </Tabs>
-        </div>
+          <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
+            {loading ? (
+              <GridSkeleton />
+            ) : (
+              <>
+                <TabsContent value="my" className="m-0 mt-0">
+                  <RepoGrid repos={my} onPick={pick} />
+                </TabsContent>
+                <TabsContent value="co" className="m-0 mt-0">
+                  <RepoGrid repos={co} onPick={pick} />
+                </TabsContent>
+              </>
+            )}
+          </div>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
 }
 
 function RepoGrid({ repos, onPick }: { repos: Repo[]; onPick: (r: Repo) => void }) {
-  if (!repos.length) return <div className="p-10 text-center opacity-80">No repositories</div>;
+  if (!repos.length) return <div className="p-10 text-center opacity-80 flex flex-col items-center gap-2"><Globe className="w-8 h-8 opacity-50" /><span>No repositories found</span></div>;
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2 pb-4">
       {repos.map((r) => (
         <RepoCard key={r.id} repo={r} onPick={() => onPick(r)} />
       ))}
@@ -144,60 +155,103 @@ function RepoGrid({ repos, onPick }: { repos: Repo[]; onPick: (r: Repo) => void 
 }
 
 function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
+  const branchCount = repo._meta?.branchCount ?? 0;
+  const tagCount = repo._meta?.tagCount ?? 0;
+  const pipelineCount = repo._meta?.pipelineCount ?? 0;
+  const languages = (repo._meta?.languages ?? []).slice(0, 3);
+
+  // ✅ เช็คว่าเป็น GitHub ไหม?
+  const isGithub = repo.provider === "github";
+
   return (
     <div
       onClick={onPick}
       role="button"
       className="cursor-pointer select-none
-                 flex h-[235px] flex-col
+                 flex h-[220px] flex-col justify-between
                  rounded-2xl border border-white/10
                  bg-[linear-gradient(0deg,rgba(0,0,0,0.20)0%,rgba(0,0,0,0.20)100%),radial-gradient(121.01%_173%_at_50%_173%,#2146ba_0%,#0d2b79_40.15%,#061845_100%)]
-                 p-4 shadow-lg
-                 hover:bg-[radial-gradient(121.01%_173%_at_50%_173%,#3b6efb_0%,#173bab_40.15%,#0a1e4d_100%)]"
+                 p-4 shadow-lg transition-all duration-200
+                 hover:scale-[1.02] hover:bg-[radial-gradient(121.01%_173%_at_50%_173%,#3b6efb_0%,#173bab_40.15%,#0a1e4d_100%)]"
     >
-      {/* header + description */}
-      <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between">
-          <div className=" text-base font-semibold">{repo.name}</div>
-          <div className="flex items-center gap-2 text-[11px] opacity-90">
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-base font-semibold truncate pr-2 text-white">{repo.name}</div>
+          <div className="shrink-0">
             {repo.private ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-[2px]">
-                <LockKeyhole className="h-3 w-3" /> private
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-1 text-[10px] text-white/90 border border-white/10">
+                <LockKeyhole className="h-3 w-3" /> Private
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-[2px]">
-                <Globe className="h-3 w-3" /> public
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] text-emerald-200 border border-emerald-500/30">
+                <Globe className="h-3 w-3" /> Public
               </span>
             )}
           </div>
         </div>
-        <p className=" text-sm text-white/80">{repo.description}</p>
+        <p className="text-xs text-white/70 line-clamp-2 h-[32px] mb-2 leading-relaxed">
+            {repo.description || "No description provided."}
+        </p>
       </div>
 
-      {/* badges + languages — ดันไว้ล่างสุด */}
-      <div className="mt-auto flex flex-wrap items-center gap-2 text-xs">
-        <Badge icon={<GitBranch className="h-3 w-3" />}>
-          {(repo._meta?.branchCount ?? 0)} Branch
-        </Badge>
-        <Badge icon={<Star className="h-3 w-3" />}>{repo.stargazers_count} Star</Badge>
-        <Badge icon={<Tag className="h-3 w-3" />}>{repo._meta?.tagCount ?? 0} Tags</Badge>
-        <Badge>{repo._meta?.pipelineCount ?? 0} Pipelines</Badge>
+      {/* Badges Area */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+           
+           {/* 🎯 Pipeline: 
+              - ถ้าเป็น GitHub: โชว์เสมอ (แม้เป็น 0)
+              - ถ้าเป็น GitLab: โชว์เฉพาะตอน > 0
+           */}
+           {(isGithub || pipelineCount > 0) && (
+             <Badge icon={<GitPullRequest className="h-3 w-3 text-blue-300" />}>
+               {pipelineCount} {pipelineCount !== 1 ? "pipelines" : "pipeline"}
+             </Badge>
+           )}
 
-        <div className="flex flex-wrap gap-2">
-          {(repo._meta?.languages ?? []).slice(0, 6).map((lang) => (
-            <span key={lang} className="rounded-full bg-white/10 px-2 py-[2px] text-xs">
-              {lang}
-            </span>
-          ))}
+           {/* 🎯 Branch: 
+              - ถ้าเป็น GitHub: โชว์เสมอ (แม้เป็น 0)
+              - ถ้าเป็น GitLab: โชว์เฉพาะตอน > 0
+           */}
+           {(isGithub || branchCount > 0) && (
+                <Badge icon={<GitBranch className="h-3 w-3" />}>{branchCount}</Badge>
+           )}
+           
+           {/* Star: โชว์เฉพาะถ้ามีค่า > 0 (อันนี้เหมือนกันทั้งคู่) */}
+           {repo.stargazers_count > 0 && (
+               <Badge icon={<Star className="h-3 w-3 text-yellow-400" />}>{repo.stargazers_count}</Badge>
+           )}
+           
+           {tagCount > 0 && <Badge icon={<Tag className="h-3 w-3" />}>{tagCount}</Badge>}
+
+           {/* ป้าย Provider สำรอง:
+              จะโชว์ก็ต่อเมื่อ ไม่มีอะไรจะโชว์จริงๆ (เช่น GitLab ที่ไม่มีดาว ไม่มี branch ไม่มี pipeline)
+           */}
+           {!isGithub && pipelineCount === 0 && branchCount === 0 && repo.stargazers_count === 0 && (
+               <Badge className="opacity-70 font-semibold uppercase tracking-wider text-[9px]">
+                  {repo.provider || "Git"}
+               </Badge>
+           )}
         </div>
+
+        {/* Languages */}
+        {languages.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+                {languages.map((lang) => (
+                    <span key={lang} className="rounded-md bg-white/10 px-2 py-[2px] text-[10px] text-white/80">
+                        {lang}
+                    </span>
+                ))}
+            </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Badge({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
+// Utility Components
+function Badge({ children, icon, className }: { children: React.ReactNode; icon?: React.ReactNode; className?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-[2px]">
+    <span className={`inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-white/90 border border-white/5 ${className}`}>
       {icon}
       {children}
     </span>
@@ -207,8 +261,8 @@ function Badge({ children, icon }: { children: React.ReactNode; icon?: React.Rea
 function GridSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-[250px] animate-pulse rounded-2xl bg-white/10" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-[220px] animate-pulse rounded-2xl bg-white/5 border border-white/5" />
       ))}
     </div>
   );

@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     owner: { login: r.owner?.login, avatar_url: r.owner?.avatar_url },
     permissions: r.permissions,
     updated_at: r.updated_at,
+    provider: "github"
   }));
 
   // ระวัง rate limit — enrich แค่ชุดแรกก่อน (ปรับได้)

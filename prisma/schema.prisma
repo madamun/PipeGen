@@ -35,8 +35,9 @@ model Account {
   userId                String
   accountId             String
   providerId            String
-  accessToken           String?
-  refreshToken          String?
+  accessToken           String?   @db.Text // แนะนำให้เติม @db.Text เผื่อไว้
+  refreshToken          String?   @db.Text // แนะนำให้เติม @db.Text เผื่อไว้
+  idToken               String?   @db.Text 
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?

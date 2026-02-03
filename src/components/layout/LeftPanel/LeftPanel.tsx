@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeftToLine, ChevronsUpDown } from "lucide-react";
+import { ArrowLeftToLine, ChevronsUpDown, Github, Gitlab } from "lucide-react";
 // ⚠️ แก้ path SearchBar ให้ตรงกับที่คุณเก็บไว้นะครับ
 import SearchBar from "@/components/common/SearchBar"; 
 import SetupSection from "./Setup/SetupSection";
+import { usePipeline } from "@/components/workspace/PipelineProvider"; // ✅ 1. เรียกใช้ Hook
 
 // --- ส่วนย่อย: Top Header (แบบเดิม) ---
 function LeftTop() {
@@ -31,8 +32,11 @@ function LeftTop() {
 
 // --- Component หลัก ---
 export default function LeftPanel() {
+  // ✅ 2. ดึง state provider มาใช้
+  const { provider, setProvider } = usePipeline();
+
   return (
-    <div className="ml-3">
+    <div className="ml-3 flex flex-col h-full"> {/* ✅ เพิ่ม flex flex-col h-full เพื่อจัด layout */}
       
       {/* Header */}
       <LeftTop />

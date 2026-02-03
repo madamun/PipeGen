@@ -10,6 +10,8 @@ import UserMenu from "./UserMenu";
 function SignInCard() {
   const signInGithub = () =>
     authClient.signIn.social({ provider: "github", callbackURL: "/" });
+  const signInGitlab = () =>
+    authClient.signIn.social({ provider: "gitlab", callbackURL: "/" });
 
   return (
     <div
@@ -36,10 +38,9 @@ function SignInCard() {
           </p>
         </Button>
 
-        {/* ปุ่ม GitLab (UI Only) */}
         <Button
-          disabled
-          className="flex px-4 py-2 justify-center items-center gap-2 self-stretch rounded-lg bg-[#E2432A] shadow-sm hover:bg-[#DF614D] disabled:opacity-70"
+          className="flex px-4 py-2 justify-center items-center gap-2 self-stretch rounded-lg bg-[#E2432A] shadow-sm hover:bg-[#DF614D]"
+          onClick={signInGitlab}
         >
           <Gitlab className="h-5 w-5" />
           <p className="text-white text-center text-base font-medium leading-6">

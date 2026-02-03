@@ -32,6 +32,12 @@ interface PipelineContextType {
   availableBranches: string[];
   componentValues: Record<string, any>;
   updateComponentValue: (id: string, val: any) => void;
+  provider: "github" | "gitlab";
+  setProvider: (p: "github" | "gitlab") => void;
+  fetchBranches: (repoFullName: string) => Promise<void>;
+  availableRepos: any[]; // เพิ่มตัวนี้
+  fetchRepos: () => Promise<void>; // เพิ่มตัวนี้
+  isLoading: boolean;
 }
 
 const PipelineContext = createContext<PipelineContextType | undefined>(undefined);
@@ -43,8 +49,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState("main");
+  const [provider, setProvider] = useState<"github" | "gitlab">("github");
   const [selectedFile, setSelectedFile] = useState<string>("");
-
   const [fileList, setFileList] = useState<{ fileName: string; fullPath: string }[]>([]);
   const [draftList, setDraftList] = useState<{ fileName: string; fullPath: string }[]>([]);
   const [gitFileList, setGitFileList] = useState<{ fileName: string; fullPath: string }[]>([]);
@@ -58,6 +64,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const isRenamingRef = useRef(false);
   const lastSavedContent = useRef<string | null>(null);
   const isAutoDetecting = useRef(false);
+
+  const [availableRepos, setAvailableRepos] = useState<any[]>([]); // ✅ State เก็บรายชื่อ Repo
+  const [isLoading, setIsLoading] = useState(false);
 
   // --- Load Initial Data ---
   useEffect(() => {
@@ -79,6 +88,87 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedRepo]);
 
+  useEffect(() => {
+    const detectProvider = async () => {
+      try {
+        const res = await fetch('/api/auth/providers');
+        const data = await res.json();
+        const myProviders = data.providers || [];
+
+        // Logic เลือกให้อัตโนมัติ:
+        if (myProviders.includes('gitlab')) {
+          // ถ้ามี GitLab (หรือมีทั้งคู่) ให้ลองใช้ GitLab ก่อน (หรือแล้วแต่ priority คุณ)
+          // แต่ถ้า User login ด้วย GitLab อย่างเดียว มันจะเข้าเคสนี้แน่นอน
+          setProvider('gitlab');
+        }
+
+        if (myProviders.includes('github') && !myProviders.includes('gitlab')) {
+          // ถ้ามีแต่ GitHub
+          setProvider('github');
+        }
+
+        // หมายเหตุ: ถ้ามีทั้งคู่ คุณอาจจะต้องเลือกตัวใดตัวหนึ่งเป็น default
+        // code ด้านบน ถ้ามี gitlab จะเลือก gitlab เป็นหลัก
+      } catch (e) {
+        console.error("Auto-detect provider failed", e);
+      }
+    };
+
+    detectProvider();
+  }, []);
+
+  const fetchRepos = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // เลือก API ตามค่าย
+      const endpoint = provider === 'gitlab'
+        ? `/api/gitlab/repos`
+        : `/api/github/repos`; // หรือ /api/github/commit/repos แล้วแต่ route คุณ
+
+      const res = await fetch(endpoint);
+      const data = await res.json();
+
+      if (data.repos) {
+        setAvailableRepos(data.repos);
+      } else {
+        setAvailableRepos([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch repos:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [provider]); // ✅ รันใหม่เมื่อ provider เปลี่ยน
+
+  // 👇 Effect: สั่งดึงข้อมูลทันทีที่เปลี่ยนค่าย
+  useEffect(() => {
+    fetchRepos();
+  }, [fetchRepos]);
+
+
+  const fetchBranches = useCallback(async (repoFullName: string) => {
+    if (!repoFullName) return;
+
+    // เลือก API ตาม Provider ปัจจุบัน
+    const endpoint = provider === 'gitlab'
+      ? `/api/gitlab/branches`
+      : `/api/github/branches`;
+
+    try {
+      const res = await fetch(`${endpoint}?full_name=${encodeURIComponent(repoFullName)}`);
+      const data = await res.json();
+
+      if (data.branches) {
+        // Map เอาแค่ชื่อ Branch มาเก็บ
+        setAvailableBranches(data.branches.map((b: any) => b.name));
+      } else {
+        setAvailableBranches([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch branches:", error);
+      setAvailableBranches([]);
+    }
+  }, [provider]); // เมื่อ provider เปลี่ยน ฟังก์ชันจะอัปเดต URL ใหม่
 
   // =========================================================
   // 🧠 CORE ENGINE: สร้าง YAML (แบบไม่ลบโค้ดที่ user พิมพ์เพิ่ม)
@@ -434,7 +524,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const discardDraft = async () => { if (!selectedRepo || !selectedFile) return false; if (!confirm(`Discard changes?`)) return false; try { setIsSaving(true); const res = await fetch('/api/pipeline/draft', { method: 'DELETE', body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: ".github/workflows/" + selectedFile, branch: selectedBranch }) }); if (res.ok) { await refreshFileList(); setSelectedFile(""); setComponentValues({}); return true; } } catch (e) { console.error(e); } finally { setIsSaving(false); } return false; };
 
   return (
-    <PipelineContext.Provider value={{ language, setLanguage, fileContent, setFileContent, selectedRepo, setSelectedRepo, selectedBranch, setSelectedBranch, isSaving, selectedFile, setSelectedFile, fileList, draftList, gitFileList, renameCurrentFile, commitFile, discardDraft, categories, availableBranches, componentValues, updateComponentValue }}>
+    <PipelineContext.Provider value={{ language, setLanguage, fileContent, setFileContent, selectedRepo, setSelectedRepo, selectedBranch, setSelectedBranch, isSaving, selectedFile, setSelectedFile, fileList, draftList, gitFileList, renameCurrentFile, commitFile, discardDraft, categories, availableBranches, componentValues, updateComponentValue, provider, setProvider, fetchBranches, availableRepos, fetchRepos, isLoading, }}>
       {children}
     </PipelineContext.Provider>
   );
