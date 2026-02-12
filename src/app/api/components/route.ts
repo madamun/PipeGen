@@ -6,10 +6,10 @@ export async function GET() {
     include: {
       components: {
         include: { syntaxes: true }, // เอา Template มาด้วย
-        orderBy: { name: 'asc' }
+        // orderBy: { name: 'asc' }
       }
     },
-    orderBy: { displayOrder: 'asc' }
+    // orderBy: { displayOrder: 'asc' }
   });
   return NextResponse.json(categories);
 }

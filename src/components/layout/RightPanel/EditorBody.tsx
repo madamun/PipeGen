@@ -1,102 +1,107 @@
-// src/components/layout/RightPanel/EditorBody.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import CodeMirror from "@uiw/react-codemirror";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { yaml as yamlLang } from "@codemirror/lang-yaml";
-import { keymap, EditorView } from "@codemirror/view";
-import { indentWithTab } from "@codemirror/commands";
-
-// 1. Import Provider ของเรา
+import React, { useEffect, useState, useRef } from "react";
+import Editor, { DiffEditor, OnMount } from "@monaco-editor/react";
 import { usePipeline } from "@/components/workspace/PipelineProvider";
+import { Loader2 } from "lucide-react";
 
-export default function EditorBody() {
-  // 2. ดึง fileContent
-  const { fileContent, setFileContent, selectedFile } = usePipeline();
+interface EditorBodyProps {
+  fontSize: number;
+  isDiffMode: boolean;
+}
 
-  // ✅ FIX 1: แปลงค่าให้เป็น String เสมอ
+export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
+  const { fileContent, setFileContent, selectedFile, originalContent, selectedBranch } = usePipeline();
+  
   const safeContent = typeof fileContent === "string" ? fileContent : "";
+  const safeOriginal = typeof originalContent === "string" ? originalContent : "";
 
-  // Local State สำหรับ Editor (เพื่อให้พิมพ์ลื่น ไม่รอ Context)
   const [doc, setDoc] = useState(safeContent);
-
-  // ✅ FIX 2: Sync ข้อมูล 'ขาเข้า' (จาก DB/GitHub)
-  // จะทำงานก็ต่อเมื่อ "เปลี่ยนไฟล์ใหม่" หรือ "ค่า safeContent เปลี่ยนแบบก้าวกระโดด" (เช่น โหลดเสร็จ)
-  // เราจะไม่ใส่ [fileContent] ตรงๆ เพื่อป้องกัน Loop ตอนพิมพ์
-  useEffect(() => {
-    setDoc(safeContent);
-  }, [selectedFile, safeContent]); 
-  // หมายเหตุ: การใส่ safeContent ตรงนี้ไม่อันตรายเพราะเรามี debounce ขาออกช่วยหน่วงไว้
-  // แต่ถ้ายังกระตุก สามารถเอา safeContent ออก แล้วใช้ key={selectedFile} แทนได้
-
-  // Debounce Ref
+  const [isMounting, setIsMounting] = useState(true);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ FIX 3: Sync ข้อมูล 'ขาออก' (ไปเก็บใน Context/DB)
-  const handleChange = useCallback((val: string) => {
-    // 1. อัปเดตหน้าจอทันที (คนใช้งานจะรู้สึกว่าลื่น)
-    setDoc(val);
+  useEffect(() => {
+    if (safeContent !== doc) { setDoc(safeContent); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeContent, selectedFile]); 
 
-    // 2. หน่วงเวลาส่งไปเก็บใน Context (ลดการ Re-render ของแม่)
+  const handleEditorChange = (value: string | undefined) => {
+    const val = value || "";
+    if (val === safeContent) return;
+    setDoc(val); 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      setFileContent(val);
-    }, 300); // เพิ่มเวลาเป็น 300ms ให้พิมพ์ต่อเนื่องได้เนียนขึ้น
-  }, [setFileContent]);
+    timeoutRef.current = setTimeout(() => { setFileContent(val); }, 500);
+  };
 
-  // หน้าจอตอนยังไม่เลือกไฟล์
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    setIsMounting(false);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (!isDiffMode) setFileContent(editor.getValue());
+    });
+  };
+
+  const handleDiffMount = (editor: any) => {
+    setIsMounting(false);
+    setTimeout(() => {
+        editor.updateOptions({
+            enableSplitViewResizing: false,
+            renderSideBySide: true,
+            originalEditable: false,
+            minimap: { enabled: false },
+            renderOverviewRuler: false,
+            overviewRulerBorder: false,
+            scrollbar: { vertical: 'auto', verticalScrollbarSize: 10, alwaysConsumeMouseWheel: false },
+            readOnly: true,
+            scrollBeyondLastLine: false,
+            fontFamily: "'JetBrains Mono', monospace",
+            diffWordWrap: "off",
+            lineNumbersMinChars: 3,
+            automaticLayout: true,
+        });
+        editor.layout(); 
+    }, 50);
+  }
+
   if (!selectedFile) {
     return (
-      <div className="h-full w-full bg-[#282c34] flex flex-col items-center justify-center text-slate-500 select-none">
-        <div className="text-4xl mb-2">👋</div>
-        <p className="text-sm">Select a file (📂) or create new (+)</p>
-        <p className="text-xs opacity-50 mt-1">to start editing pipeline</p>
+      <div className="h-full w-full bg-[#1e1e1e] flex flex-col items-center justify-center text-slate-500 select-none">
+        <div className="text-4xl mb-4 opacity-30 grayscale">🚀</div>
+        <p className="text-sm font-medium">No file selected</p>
       </div>
     );
   }
 
+  const LoadingOverlay = () => (
+     <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e] z-20"><div className="flex flex-col items-center gap-2"><Loader2 className="animate-spin text-blue-500 h-6 w-6" /><span className="text-xs text-slate-500">Loading Editor...</span></div></div>
+  );
+
   return (
-    <div className="h-full w-full bg-[#282c34]">
-      <CodeMirror
-        // ✅ FIX 4: ใส่ key เพื่อบังคับให้ Editor สร้างใหม่เมื่อเปลี่ยนไฟล์ (แก้บั๊กแสดงข้อมูลไฟล์เก่าค้าง)
-        key={selectedFile} 
-        value={doc}
-        height="100%"
-        theme={oneDark}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: true,
-          highlightActiveLine: true,
-          foldGutter: true,
-          bracketMatching: true,
-          autocompletion: true,
-        }}
-        extensions={[
-          yamlLang(),
-          keymap.of([
-            indentWithTab,
-            {
-              key: "Mod-s",
-              preventDefault: true,
-              run: () => {
-                console.log("Save Triggered (Ctrl+S)");
-                // ถ้าอยากให้กด Ctrl+S แล้วเซฟทันทีโดยไม่รอ debounce
-                setFileContent(doc); 
-                return true;
-              },
-            },
-          ]),
-          EditorView.lineWrapping, 
-        ]}
-        onChange={handleChange}
-        style={{ 
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", 
-            fontSize: 14, 
-            height: "100%" 
-        }}
-        className="h-full"
-      />
+    <div className="h-full w-full bg-[#010819] relative flex flex-col">
+      {isDiffMode && (
+        <style jsx global>{`
+          .monaco-diff-editor .monaco-sash { pointer-events: none !important; width: 0px !important; background: transparent !important; }
+          .monaco-diff-editor .diagonal-fill { background-image: none !important; background-color: #0f1e30 !important; }
+          .monaco-diff-editor .editor.modified { box-shadow: none !important; }
+          .monaco-scrollable-element > .scrollbar > .slider { background: rgba(255, 255, 255, 0.1) !important; border-radius: 4px; }
+        `}</style>
+      )}
+
+      {isDiffMode && (
+         <div className="grid grid-cols-2 h-9 border-b border-white/10 text-xs font-mono select-none z-10 shrink-0">
+            <div className="flex items-center justify-center px-4 text-slate-400 bg-[#0f1e30] border-r border-white/10"><span className="opacity-70">Older Version (Git)</span></div>
+            <div className="flex items-center justify-center px-4 text-white bg-blue-600 border-l border-white/5"><div className="flex items-center gap-2"><span>{selectedBranch || "Current"} (Modified)</span></div></div>
+         </div>
+      )}
+
+      <div className="flex-1 relative overflow-hidden">
+         {isMounting && <LoadingOverlay />}
+         {isDiffMode ? (
+            <DiffEditor height="100%" theme="vs-dark" original={safeOriginal} modified={doc} onMount={handleDiffMount} options={{ fontSize: fontSize, readOnly: true, renderSideBySide: true, enableSplitViewResizing: false, useInlineViewWhenSpaceIsLimited: false, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false, fontFamily: "'JetBrains Mono', monospace", diffWordWrap: "off", theme: "vs-dark" }} />
+         ) : (
+            <Editor height="100%" defaultLanguage="yaml" path={selectedFile} theme="vs-dark" value={doc} onChange={handleEditorChange} onMount={handleEditorDidMount} options={{ fontSize: fontSize, minimap: { enabled: true }, fontFamily: "'JetBrains Mono', monospace", scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 16, bottom: 16 } }} />
+         )}
+      </div>
     </div>
   );
 }

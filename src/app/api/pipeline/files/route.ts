@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { auth } from "@/server/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   try {
     const session = await auth.api.getSession({ headers: req.headers });
@@ -14,75 +16,104 @@ export async function GET(req: Request) {
 
     if (!repoFullName) return NextResponse.json({ error: "Missing repo" }, { status: 400 });
 
-    // 1. หา Repo ID
     const repo = await prisma.repository.findFirst({
       where: { fullName: repoFullName, userId: session.user.id }
     });
 
-    // เตรียมตัวแปรเก็บผลลัพธ์
+    if (!repo) return NextResponse.json({ error: "Repository not found" }, { status: 404 });
+
+    const provider = repo.provider; 
     let drafts: any[] = [];
     let gitFiles: any[] = [];
 
-    // 2. ดึง Drafts จาก Database (งานที่ค้างอยู่)
-    if (repo) {
-      const dbPipelines = await prisma.pipeline.findMany({
+    // 1. ดึง Drafts
+    const dbPipelines = await prisma.pipeline.findMany({
         where: { 
-          repoId: repo.id, 
-          branch: branch,
-          // เอาเฉพาะที่มี Draft หรือเป็นไฟล์ใหม่ที่ยังไม่มีใน Git
-          drafts: { some: {} } 
+            repoId: repo.id, 
+            branch: branch,
+            drafts: { some: {} } 
         },
-        select: { filePath: true, name: true, updatedAt: true }
-      });
+        select: { filePath: true, name: true } // *ถ้าจะให้ Draft มี content ด้วยต้อง select เพิ่ม*
+    });
 
-      drafts = dbPipelines.map(p => ({
+    drafts = dbPipelines.map(p => ({
         fileName: p.name,
         fullPath: p.filePath,
-        source: 'draft' // แปะป้ายว่าเป็น Draft
-      }));
-    }
+        source: 'draft'
+    }));
 
-    // 3. ดึงไฟล์จาก GitHub (ไฟล์ต้นฉบับ)
+    // 2. ดึง Git Files
     try {
         const account = await prisma.account.findFirst({
-            where: { userId: session.user.id, providerId: "github" }
+            where: { userId: session.user.id, providerId: provider }
         });
         
         if (account?.accessToken) {
-            const ghRes = await fetch(`https://api.github.com/repos/${repoFullName}/contents/.github/workflows?ref=${branch}`, {
-                headers: { "Authorization": `Bearer ${account.accessToken}` }
-            });
             
-            if (ghRes.ok) {
-                const data = await ghRes.json();
-                if (Array.isArray(data)) {
-                     // กรองเอาเฉพาะไฟล์ .yml / .yaml
-                     const allGitFiles = data
-                        .filter((f: any) => f.name.endsWith('.yml') || f.name.endsWith('.yaml'))
-                        .map((f: any) => ({
-                            fileName: f.name,
-                            fullPath: f.path,
-                            source: 'git' // แปะป้ายว่าเป็น Git
-                        }));
+            // ==========================================
+            // 🐙 GITHUB LOGIC
+            // ==========================================
+            if (provider === "github") {
+                const ghRes = await fetch(`https://api.github.com/repos/${repoFullName}/contents/.github/workflows?ref=${branch}`, {
+                    headers: { "Authorization": `Bearer ${account.accessToken}` }
+                });
+                
+                if (ghRes.ok) {
+                    const data = await ghRes.json();
+                    if (Array.isArray(data)) {
+                        // GitHub ส่งมาเป็น List ต้องวน loop ดึง content หรือส่งไปแค่ List
+                        // *เคสนี้เราส่งแค่ List ไปก่อน (เหมือนเดิม)*
+                        gitFiles = data
+                            .filter((f: any) => f.name.endsWith('.yml') || f.name.endsWith('.yaml'))
+                            .map((f: any) => ({
+                                fileName: f.name,
+                                fullPath: f.path,
+                                source: 'git',
+                                // content: ... (ปกติ GitHub API List ไม่ส่ง content มาให้ ต้อง fetch แยก)
+                            }));
+                    }
+                }
+            }
+            
+            // ==========================================
+            // 🦊 GITLAB LOGIC (พระเอกของเรา)
+            // ==========================================
+            else if (provider === "gitlab") {
+                const encodedId = encodeURIComponent(repoFullName);
+                const filePath = ".gitlab-ci.yml";
+                
+                // 🔥 ใช้ URL นี้เพื่อดึง "เนื้อหาดิบ (Raw)"
+                const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${branch}`;
+                
+                const glRes = await fetch(apiUrl, {
+                     method: "GET",
+                     headers: { "Authorization": `Bearer ${account.accessToken}` }
+                });
 
-                     // 4. 🔥 Logic เด็ด: ตัดไฟล์ที่มี Draft แล้ว ออกจากกลุ่ม Git
-                     // (จะได้ไม่โชว์ซ้ำ 2 ที่ ถ้ามี Draft ให้ถือว่าเป็น Draft)
-                     const draftPaths = new Set(drafts.map(d => d.fullPath));
-                     gitFiles = allGitFiles.filter(f => !draftPaths.has(f.fullPath));
+                if (glRes.ok) {
+                    const contentText = await glRes.text(); // ✅ อ่านเนื้อหาออกมาเลย
+                    
+                    gitFiles.push({
+                        fileName: ".gitlab-ci.yml",
+                        fullPath: ".gitlab-ci.yml",
+                        source: 'git',
+                        content: contentText // ✅ ส่งเนื้อหาไปด้วย! หน้าบ้านจะได้ไม่ต้องไปหาเอง
+                    });
                 }
             }
         }
     } catch (e) {
-        console.error("Git fetch error:", e);
+        console.error(`${provider} fetch error:`, e);
     }
 
-    // ส่งกลับไปทั้ง 2 กลุ่ม
-    return NextResponse.json({ 
-        drafts, 
-        gitFiles 
-    });
+    // 3. กรอง Drafts
+    const draftPaths = new Set(drafts.map(d => d.fullPath));
+    gitFiles = gitFiles.filter(f => !draftPaths.has(f.fullPath));
+
+    return NextResponse.json({ drafts, gitFiles });
 
   } catch (error) {
+    console.error(error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

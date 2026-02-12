@@ -14,65 +14,115 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // 1. หา Token
-    const account = await prisma.account.findFirst({
-        where: { userId: session.user.id, providerId: "github" }
-    });
-    if (!account?.accessToken) return NextResponse.json({ error: "No GitHub token" }, { status: 401 });
-
-    const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}`;
-
-    // 2. เช็คก่อนว่าไฟล์มีอยู่แล้วไหม? (เพื่อเอา SHA)
-    // ถ้าไม่มี SHA = Create New File, ถ้ามี SHA = Update File
-    let sha = null;
-    try {
-        const getRes = await fetch(`${apiUrl}?ref=${branch}`, {
-            headers: { "Authorization": `Bearer ${account.accessToken}` }
-        });
-        if (getRes.ok) {
-            const getData = await getRes.json();
-            sha = getData.sha;
-        }
-    } catch (e) { /* ignore error, assume new file */ }
-
-    // 3. ยิง PUT เพื่อ Save ลง GitHub
-    const body: any = {
-        message: message,
-        content: Buffer.from(content).toString('base64'), // ต้องแปลงเป็น Base64
-        branch: branch || "main"
-    };
-    if (sha) body.sha = sha; // ถ้าเป็นการแก้ไฟล์เดิม ต้องส่ง SHA ไปด้วย
-
-    const putRes = await fetch(apiUrl, {
-        method: "PUT",
-        headers: {
-            "Authorization": `Bearer ${account.accessToken}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-    });
-
-    if (!putRes.ok) {
-        const errText = await putRes.text();
-        return NextResponse.json({ error: "GitHub Error: " + errText }, { status: 500 });
-    }
-
-    // 4. ✅ Commit สำเร็จ -> ลบ Draft ใน DB ทิ้ง (เพราะถือว่า Sync แล้ว)
+    // 1. ✅ หา Repository ใน DB ก่อน เพื่อดูว่าเป็น provider ไหน
     const repo = await prisma.repository.findFirst({
         where: { fullName: repoFullName, userId: session.user.id }
     });
 
-    if (repo) {
-        const pipeline = await prisma.pipeline.findFirst({
-            where: { repoId: repo.id, filePath: filePath, branch: branch }
+    if (!repo) return NextResponse.json({ error: "Repository not found in DB" }, { status: 404 });
+
+    const provider = repo.provider; // "github" หรือ "gitlab"
+
+    // 2. ดึง Token ตาม Provider
+    const account = await prisma.account.findFirst({
+        where: { userId: session.user.id, providerId: provider }
+    });
+    
+    if (!account?.accessToken) return NextResponse.json({ error: `No ${provider} token` }, { status: 401 });
+
+    // ----------------------------------------------------
+    // 🐙 GITHUB LOGIC
+    // ----------------------------------------------------
+    if (provider === "github") {
+        const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}`;
+        
+        // เช็ค SHA
+        let sha = null;
+        try {
+            const getRes = await fetch(`${apiUrl}?ref=${branch}`, {
+                headers: { "Authorization": `Bearer ${account.accessToken}` }
+            });
+            if (getRes.ok) {
+                const getData = await getRes.json();
+                sha = getData.sha;
+            }
+        } catch (e) {}
+
+        const body: any = {
+            message: message,
+            content: Buffer.from(content).toString('base64'),
+            branch: branch || "main"
+        };
+        if (sha) body.sha = sha;
+
+        const putRes = await fetch(apiUrl, {
+            method: "PUT",
+            headers: {  
+                "Authorization": `Bearer ${account.accessToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
         });
 
-        if (pipeline) {
-            // ลบ Draft ทิ้ง
-            await prisma.pipelineDraft.deleteMany({
-                where: { pipelineId: pipeline.id }
-            });
+        if (!putRes.ok) {
+            const errText = await putRes.text();
+            return NextResponse.json({ error: "GitHub Error: " + errText }, { status: 500 });
         }
+    }
+    
+    // ----------------------------------------------------
+    // 🦊 GITLAB LOGIC (แบบย่อ สำหรับ Quick Save)
+    // ----------------------------------------------------
+    else if (provider === "gitlab") {
+        const encodedId = encodeURIComponent(repoFullName);
+        const encodedPath = encodeURIComponent(filePath);
+
+        // เช็คว่ามีไฟล์ไหม (HEAD)
+        let action = "create";
+        const checkRes = await fetch(
+            `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}?ref=${branch}`,
+            {
+                method: "HEAD",
+                headers: { "Authorization": `Bearer ${account.accessToken}` }
+            }
+        );
+        if (checkRes.ok) action = "update";
+
+        // Commit
+        const commitRes = await fetch(`https://gitlab.com/api/v4/projects/${encodedId}/repository/commits`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${account.accessToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                branch: branch || "main",
+                commit_message: message,
+                actions: [{
+                    action: action,
+                    file_path: filePath,
+                    content: content
+                }]
+            })
+        });
+
+        if (!commitRes.ok) {
+             const err = await commitRes.json();
+             return NextResponse.json({ error: "GitLab Error: " + (err.message || JSON.stringify(err)) }, { status: 500 });
+        }
+    }
+
+    // ----------------------------------------------------
+    // 3. Cleanup: ลบ Draft ทิ้งหลังจาก Save สำเร็จ (ใช้ Logic เดิม)
+    // ----------------------------------------------------
+    const pipeline = await prisma.pipeline.findFirst({
+        where: { repoId: repo.id, filePath: filePath, branch: branch }
+    });
+
+    if (pipeline) {
+        await prisma.pipelineDraft.deleteMany({
+            where: { pipelineId: pipeline.id }
+        });
     }
 
     return NextResponse.json({ success: true });

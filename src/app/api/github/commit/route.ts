@@ -122,8 +122,21 @@ export async function POST(req: NextRequest) {
 
     // mode === "pull_request"
     const baseSha = await getBaseSha(baseBranch);
-    const newBranch = `pipegen/${slug(title || "change")}-${Date.now()}`;
 
+    // ✅ สร้างวันที่แบบอ่านง่าย (YYYYMMDD-HHmm)
+    const now = new Date();
+    const dateStr = now.toISOString()
+      .replace(/[-:]/g, "")  // ลบขีดและจุดคู่ทิ้ง
+      .replace("T", "-")     // เปลี่ยน T เป็นขีด
+      .slice(0, 13);         // ตัดเอาแค่ ปีเดือนวัน-ชมนาที (เช่น 20260204-1959)
+
+    // ตัดชื่อ Title ให้สั้นลง 
+    const safeTitle = slug(title || "update")
+
+    // ผลลัพธ์: "pg/update-20260204-1959" (อ่านรู้เรื่องว่าแก้เรื่องอะไร เมื่อไหร่)
+    const newBranch = `pg/${safeTitle}-${dateStr}`;
+
+    await createBranch(baseSha, newBranch);
     await createBranch(baseSha, newBranch);
     const result = await putFile(newBranch);
 

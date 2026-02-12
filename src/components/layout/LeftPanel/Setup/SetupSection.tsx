@@ -11,34 +11,37 @@ import {
   Zap,
   Server,
   Box,
+  FileCode,
+  ShieldCheck
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { usePipeline } from "@/components/workspace/PipelineProvider"; // ✅ ใช้ Provider ตัวใหม่
+import { usePipeline } from "@/components/workspace/PipelineProvider";
 
-// Map Icon
+// Map Icon (เพิ่ม Icon ให้ครบหมวดหมู่ใหม่)
 const IconMap: Record<string, any> = {
   GitBranch: GitBranch,
   Settings: Settings,
   Zap: Zap,
   Server: Server,
+  Box: Box,
+  FileCode: FileCode,
+  ShieldCheck: ShieldCheck,
   Default: Box,
 };
 
 export default function SetupSection() {
-  // --- STATE UI (เก็บไว้เหมือนเดิม) ---
   const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>({});
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({
     git: true,
     trigger: true,
   });
 
-  // --- 🔥 เรียก DATA จาก Provider (เปลี่ยนจาก server action เดิม) ---
   const {
-    categories,             // รายการปุ่ม
-    availableBranches,      // รายชื่อ Branch
-    componentValues,        // ค่าที่ User กรอก
-    updateComponentValue,   // ฟังก์ชันอัปเดต
-    language,               // ภาษา
+    categories,
+    availableBranches,
+    componentValues,
+    updateComponentValue,
+    language,
     setLanguage
   } = usePipeline();
 
@@ -51,10 +54,10 @@ export default function SetupSection() {
   };
 
   if (categories.length === 0)
-    return <div className="text-white/50 p-5 italic text-sm">Loading configuration...</div>;
+    return <div className="text-white/50 p-5 italic text-sm text-center">Loading configuration...</div>;
 
   return (
-    <div className="w-full max-w-[680px] space-y-4 px-1">
+    <div className="w-full max-w-[680px] space-y-4 px-1 pb-10">
       {categories.map((cat) => {
         const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
         const isCatOpen = categoriesOpen[cat.id] ?? true;
@@ -62,9 +65,7 @@ export default function SetupSection() {
         return (
           <div key={cat.id} className="space-y-1">
 
-            {/* ============================================== */}
-            {/* 1. HEADER ใหญ่ (Gradient แบบเก่าที่คุณชอบ)      */}
-            {/* ============================================== */}
+            {/* HEADER Category */}
             <button
               type="button"
               onClick={() => toggleCategory(cat.id)}
@@ -75,146 +76,148 @@ export default function SetupSection() {
               "
             >
               <div className="absolute left-5 top-1/2 -translate-y-1/2">
-                <div className="h-9 w-9 rounded-full grid place-items-center">
+                <div className="h-9 w-9 rounded-full grid place-items-center bg-white/10">
                   <Icon className="text-white" />
                 </div>
               </div>
-              <h2 className="text-[#E6EDFE] text-2xl font-bold leading-10">
+              <h2 className="text-[#E6EDFE] text-xl font-bold leading-10">
                 {cat.name}
               </h2>
               <ChevronDown
-                className={`absolute right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-white/90 transition-transform duration-300 ${isCatOpen ? "rotate-180" : "rotate-0"
-                  }`}
+                className={`absolute right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-white/90 transition-transform duration-300 ${isCatOpen ? "rotate-180" : "rotate-0"}`}
               />
             </button>
 
-            {/* ============================================== */}
-            {/* 2. BODY (กล่องสีน้ำเงินเข้ม แบบเก่า)             */}
-            {/* ============================================== */}
-            <div
-              className={`grid transition-[grid-template-rows] duration-300 ${isCatOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-                }`}
-            >
+            {/* BODY */}
+            <div className={`grid transition-[grid-template-rows] duration-300 ${isCatOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
               <div className="overflow-hidden">
-                <div className="w-full rounded-[16px] border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)]
-        shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.35)] p-4 space-y-1">
+                <div className="w-full rounded-[16px] border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.35)] p-4 space-y-1">
 
-                  {/* --- ส่วน Platform (Hardcoded เหมือนเดิม) --- */}
-                  {cat.slug === "source_control" && (
-                    <div className="mb-2">
-                      <button
-                        onClick={() => toggleSection("git")}
-                        className="flex items-center gap-2 w-full py-2 hover:bg-white/5 rounded px-2 transition-colors"
-                      >
-                        {sectionsOpen["git"] ? (
-                          <ChevronDown className="h-4 w-4 text-white" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-white" />
-                        )}
-                        <span className="text-lg font-semibold text-white">Platform</span>
-                      </button>
-
-                      {/* Buttons เลือก GitHub/GitLab */}
-                      <div
-                        className={`pl-8 overflow-hidden transition-all duration-300 ${sectionsOpen["git"] ? "max-h-[100px] opacity-100 mt-2" : "max-h-0 opacity-0"
-                          }`}
-                      >
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            onClick={() => setLanguage("github")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${language === "github" ? "bg-[#6B8CFF] text-white" : "text-slate-300 hover:bg-white/10"
-                              }`}
-                          >
-                            <Github className="h-4 w-4" /> GitHub
-                          </button>
-                          <button
-                            onClick={() => setLanguage("gitlab")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${language === "gitlab" ? "bg-[#E2432A] text-white" : "text-slate-300 hover:bg-white/10"
-                              }`}
-                          >
-                            <Gitlab className="h-4 w-4" /> GitLab
-                          </button>
-                        </div>
+                  {/* Platform Selection */}
+                  {cat.slug === "general" && (
+                    <div className="mb-4">
+                      <div className="text-xs text-blue-200 font-bold uppercase tracking-wider mb-2 ml-1 opacity-70">
+                        Target Platform
+                      </div>
+                      <div className="inline-flex items-center gap-2 w-full">
+                        <button
+                          onClick={() => setLanguage("github")}
+                          className={`flex-1 flex justify-center items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${language === "github" ? "bg-[#2EA44F] text-white border-[#2EA44F]" : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"}`}
+                        >
+                          <Github className="h-4 w-4" /> GitHub
+                        </button>
+                        <button
+                          onClick={() => setLanguage("gitlab")}
+                          className={`flex-1 flex justify-center items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${language === "gitlab" ? "bg-[#E2432A] text-white border-[#E2432A]" : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"}`}
+                        >
+                          <Gitlab className="h-4 w-4" /> GitLab
+                        </button>
                       </div>
                     </div>
                   )}
 
-                  {/* --- ส่วน Dynamic Components (Trigger ฯลฯ) --- */}
+                  {/* Components Loop */}
                   {cat.components.map((comp: any) => {
                     const isOpen = sectionsOpen[comp.name.toLowerCase()] ?? true;
 
                     return (
-                      <div key={comp.id} className="mt-4">
-                        {/* หัวข้อ Component เช่น "Trigger" */}
+                      <div key={comp.id} className="mt-2 border-t border-white/5 pt-2 first:border-0 first:pt-0">
                         <button
                           onClick={() => toggleSection(comp.name.toLowerCase())}
-                          className="flex items-center gap-2 w-full py-2 hover:bg-white/5 rounded px-2 transition-colors"
+                          className="flex items-center gap-2 w-full py-2 hover:bg-white/5 rounded px-2 transition-colors group"
                         >
-                          {isOpen ? (
-                            <ChevronDown className="h-4 w-4 text-white" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-white" />
-                          )}
-                          <span className="text-lg font-semibold text-white">
-                            {comp.name}
-                          </span>
+                          {isOpen ? <ChevronDown className="h-4 w-4 text-white/70 group-hover:text-white" /> : <ChevronRight className="h-4 w-4 text-white/70 group-hover:text-white" />}
+                          <span className="text-base font-semibold text-white/90 group-hover:text-white">{comp.name}</span>
                         </button>
 
-                        {/* Fields ภายใน */}
-                        <div
-                          className={`
-                            pl-8 flex flex-col gap-2 overflow-hidden transition-all duration-300
-                            ${isOpen ? "max-h-[500px] opacity-100 mt-2" : "max-h-0 opacity-0"}
-                          `}
-                        >
+                        <div className={`pl-6 flex flex-col gap-3 overflow-hidden transition-all duration-300 ${isOpen ? "max-h-[800px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}>
                           {comp.uiConfig?.fields?.map((field: any) => {
 
-                            // 🔥 Logic 1: Check VisibleIf (ซ่อน/แสดง ตาม Switch)
+                            // Check Visibility
                             if (field.visibleIf) {
                               const targetVal = componentValues[field.visibleIf.fieldId];
                               if (targetVal !== field.visibleIf.value) return null;
                             }
 
-                            // 🟢 SWITCH (ดีไซน์เดิม: Switch ซ้าย, Label ขวา)
+                            // 🔥🔥🔥 แก้ตรงนี้: ย้าย Switch มาไว้ข้างหน้า 🔥🔥🔥
                             if (field.type === "switch") {
                               return (
-                                <div key={field.id} className="flex items-center gap-3 py-1">
+                                <div key={field.id} className="flex items-center justify-start gap-3 py-1.5 ml-1">
                                   <Switch
                                     id={field.id}
                                     checked={componentValues[field.id] === true}
                                     onCheckedChange={(c) => updateComponentValue(field.id, c)}
-                                    className="data-[state=checked]:bg-[#6B8CFF]"
+                                    className="data-[state=checked]:bg-[#5184FB]" // สีฟ้าตามธีม
                                   />
-                                  <label
-                                    htmlFor={field.id}
-                                    className="text-[15px] text-slate-300 cursor-pointer select-none hover:text-white transition-colors"
-                                  >
+                                  <label htmlFor={field.id} className="text-[14px] text-slate-200 cursor-pointer select-none hover:text-white transition-colors font-medium">
                                     {field.label}
                                   </label>
                                 </div>
                               );
                             }
 
-                            // 🔵 BRANCH SELECTOR (เพิ่มใหม่ แต่ทำสไตล์ให้เข้ากับธีมเดิม)
+                            // Input Field
+                            if (field.type === "input") {
+                              return (
+                                <div key={field.id} className="flex flex-col gap-1.5 py-1 ml-1">
+                                  <label className="text-xs text-slate-400 font-medium">
+                                    {field.label}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={componentValues[field.id] !== undefined ? componentValues[field.id] : (field.defaultValue || "")}
+                                    onChange={(e) => updateComponentValue(field.id, e.target.value)}
+                                    placeholder={field.placeholder || ""}
+                                    className="w-full bg-[#010819]/50 border border-white/10 text-slate-200 text-sm rounded-md px-3 py-2 focus:border-blue-500 focus:outline-none placeholder:text-slate-600 transition-colors"
+                                  />
+                                </div>
+                              );
+                            }
+
+                            // Select Dropdown
+                            if (field.type === "select") {
+                              return (
+                                <div key={field.id} className="flex flex-col gap-1.5 py-1 ml-1">
+                                  <label className="text-xs text-slate-400 font-medium">
+                                    {field.label}
+                                  </label>
+                                  <div className="relative">
+                                    <select
+                                      value={componentValues[field.id] !== undefined ? componentValues[field.id] : (field.defaultValue || "")}
+                                      onChange={(e) => updateComponentValue(field.id, e.target.value)}
+                                      className="w-full bg-[#010819]/50 border border-white/10 text-slate-200 text-sm rounded-md px-3 py-2 appearance-none focus:border-blue-500 focus:outline-none cursor-pointer"
+                                    >
+                                      {field.options?.map((opt: any) => (
+                                        <option key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                      <ChevronDown className="h-3 w-3 text-slate-500" />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // Branch Select
                             if (field.type === "branch_select") {
                               const currentVal = componentValues[field.id] || [];
                               return (
-                                <div key={field.id} className="py-2 animate-in fade-in slide-in-from-top-1 ml-1">
+                                <div key={field.id} className="py-2 ml-1 bg-[#010819]/20 p-3 rounded-lg border border-white/5">
                                   <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider font-bold">{field.label}</label>
-                                    {availableBranches.length === 0 && <span className="text-[10px] text-yellow-500">Loading branches...</span>}
+                                    <label className="text-[10px] text-blue-300 uppercase tracking-wider font-bold">{field.label}</label>
+                                    {availableBranches.length === 0 && <span className="text-[10px] text-yellow-500">Waiting for branches...</span>}
                                   </div>
-
                                   <div className="flex flex-wrap gap-2">
                                     {availableBranches.map((branch) => {
                                       const isSelected = currentVal.includes(branch);
                                       return (
                                         <label key={branch} className={`
-                                                  flex items-center gap-2 px-3 py-1 rounded-full cursor-pointer border text-xs transition-all select-none
-                                                  ${isSelected
-                                            ? "bg-[#6B8CFF]/20 border-[#6B8CFF] text-[#E6EDFE]"
-                                            : "bg-white/5 border-transparent hover:bg-white/10 text-slate-400"}
-                                              `}>
+                                          flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer border text-xs transition-all select-none
+                                          ${isSelected ? "bg-[#5184FB] border-[#5184FB] text-white font-medium shadow-md" : "bg-white/5 border-transparent hover:bg-white/10 text-slate-400"}
+                                        `}>
                                           <input
                                             type="checkbox"
                                             className="hidden"
@@ -226,20 +229,15 @@ export default function SetupSection() {
                                               updateComponentValue(field.id, newVal);
                                             }}
                                           />
-                                          {/* จุดสีเล็กๆ แสดงสถานะเลือก */}
-                                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-[#6B8CFF]" />}
+                                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
                                           {branch}
                                         </label>
                                       )
                                     })}
                                   </div>
-                                  {availableBranches.length === 0 && (
-                                    <div className="text-xs text-slate-500 italic mt-1">No branches found. Check repo connection.</div>
-                                  )}
                                 </div>
-                              )
+                              );
                             }
-
                             return null;
                           })}
                         </div>

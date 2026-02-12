@@ -8,331 +8,297 @@ export interface Repo {
   name: string;
   full_name: string;
   default_branch?: string;
+  provider?: string;
 }
 
 interface PipelineContextType {
   language: string;
   setLanguage: (lang: string) => void;
-  fileContent: string;
-  setFileContent: (content: string) => void;
+  provider: "github" | "gitlab";
+  setProvider: (p: "github" | "gitlab") => void;
+  availableRepos: any[];
+  fetchRepos: () => Promise<void>;
   selectedRepo: Repo | null;
   setSelectedRepo: (repo: Repo | null) => void;
   selectedBranch: string;
   setSelectedBranch: (branch: string) => void;
-  isSaving: boolean;
+  fetchBranches: (repoFullName: string) => Promise<void>;
+  availableBranches: string[];
+
+  fileContent: string;
+  setFileContent: (content: string) => void;
   selectedFile: string;
   setSelectedFile: (file: string) => void;
+
+  originalContent: string;
+
   fileList: { fileName: string; fullPath: string }[];
   draftList: { fileName: string; fullPath: string }[];
   gitFileList: { fileName: string; fullPath: string }[];
+  isSaving: boolean;
+  isLoading: boolean;
   renameCurrentFile: (newName: string) => void;
   commitFile: (message: string) => Promise<boolean>;
   discardDraft: () => Promise<boolean>;
   categories: any[];
-  availableBranches: string[];
   componentValues: Record<string, any>;
   updateComponentValue: (id: string, val: any) => void;
-  provider: "github" | "gitlab";
-  setProvider: (p: "github" | "gitlab") => void;
-  fetchBranches: (repoFullName: string) => Promise<void>;
-  availableRepos: any[]; // เพิ่มตัวนี้
-  fetchRepos: () => Promise<void>; // เพิ่มตัวนี้
-  isLoading: boolean;
+
+  autoSetup: () => Promise<void>;
 }
 
 const PipelineContext = createContext<PipelineContextType | undefined>(undefined);
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
   // --- State ---
-  const [language, setLanguage] = useState("github");
-  const [fileContent, setFileContent] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [repoProvider, setRepoProvider] = useState<"github" | "gitlab" | null>(null);
+  const [syntaxProvider, setSyntaxProvider] = useState<"github" | "gitlab">("github");
+
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState("main");
-  const [provider, setProvider] = useState<"github" | "gitlab">("github");
+  const [availableRepos, setAvailableRepos] = useState<any[]>([]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+
+  const [fileContent, setFileContent] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
+
+  const [originalContent, setOriginalContent] = useState("");
+
   const [fileList, setFileList] = useState<{ fileName: string; fullPath: string }[]>([]);
   const [draftList, setDraftList] = useState<{ fileName: string; fullPath: string }[]>([]);
   const [gitFileList, setGitFileList] = useState<{ fileName: string; fullPath: string }[]>([]);
 
-  // --- UI State ---
   const [categories, setCategories] = useState<any[]>([]);
-  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [componentValues, setComponentValues] = useState<Record<string, any>>({});
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
   const lastSavedContent = useRef<string | null>(null);
-  const isAutoDetecting = useRef(false);
 
-  const [availableRepos, setAvailableRepos] = useState<any[]>([]); // ✅ State เก็บรายชื่อ Repo
-  const [isLoading, setIsLoading] = useState(false);
+  // 🔥 ใช้ป้องกัน Race Condition เวลา Auto Setup
+  const skipLoadOnce = useRef(false);
 
-  // --- Load Initial Data ---
+  // --- Init ---
   useEffect(() => {
-    fetch('/api/components').then(res => res.json()).then(setCategories).catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    if (selectedRepo) {
-      fetch(`/api/github/branches?full_name=${selectedRepo.full_name}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.branches && Array.isArray(data.branches)) {
-            setAvailableBranches(data.branches.map((b: any) => b.name));
-          } else {
-            setAvailableBranches([]);
-          }
-        })
-        .catch(() => setAvailableBranches([]));
-    }
-  }, [selectedRepo]);
-
-  useEffect(() => {
-    const detectProvider = async () => {
+    const init = async () => {
       try {
+        fetch('/api/components').then(res => res.json()).then(setCategories).catch(console.error);
         const res = await fetch('/api/auth/providers');
         const data = await res.json();
         const myProviders = data.providers || [];
-
-        // Logic เลือกให้อัตโนมัติ:
-        if (myProviders.includes('gitlab')) {
-          // ถ้ามี GitLab (หรือมีทั้งคู่) ให้ลองใช้ GitLab ก่อน (หรือแล้วแต่ priority คุณ)
-          // แต่ถ้า User login ด้วย GitLab อย่างเดียว มันจะเข้าเคสนี้แน่นอน
-          setProvider('gitlab');
-        }
-
-        if (myProviders.includes('github') && !myProviders.includes('gitlab')) {
-          // ถ้ามีแต่ GitHub
-          setProvider('github');
-        }
-
-        // หมายเหตุ: ถ้ามีทั้งคู่ คุณอาจจะต้องเลือกตัวใดตัวหนึ่งเป็น default
-        // code ด้านบน ถ้ามี gitlab จะเลือก gitlab เป็นหลัก
-      } catch (e) {
-        console.error("Auto-detect provider failed", e);
-      }
+        if (myProviders.includes('github')) { setRepoProvider('github'); setSyntaxProvider('github'); }
+        else if (myProviders.includes('gitlab')) { setRepoProvider('gitlab'); setSyntaxProvider('gitlab'); }
+      } catch (e) { console.error("Init failed", e); }
     };
-
-    detectProvider();
+    init();
   }, []);
 
+  // --- Fetch Repos ---
   const fetchRepos = useCallback(async () => {
+    if (!repoProvider) return;
     setIsLoading(true);
     try {
-      // เลือก API ตามค่าย
-      const endpoint = provider === 'gitlab'
-        ? `/api/gitlab/repos`
-        : `/api/github/repos`; // หรือ /api/github/commit/repos แล้วแต่ route คุณ
-
+      const endpoint = repoProvider === 'gitlab' ? `/api/gitlab/repos` : `/api/github/repos`;
       const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`Fetch Repos Error: ${res.status}`);
       const data = await res.json();
+      setAvailableRepos(data.repos || []);
+    } catch (error) { setAvailableRepos([]); } finally { setIsLoading(false); }
+  }, [repoProvider]);
 
-      if (data.repos) {
-        setAvailableRepos(data.repos);
-      } else {
-        setAvailableRepos([]);
-      }
-    } catch (error) {
-      console.error("Failed to fetch repos:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [provider]); // ✅ รันใหม่เมื่อ provider เปลี่ยน
-
-  // 👇 Effect: สั่งดึงข้อมูลทันทีที่เปลี่ยนค่าย
-  useEffect(() => {
-    fetchRepos();
-  }, [fetchRepos]);
-
+  useEffect(() => { fetchRepos(); }, [fetchRepos]);
 
   const fetchBranches = useCallback(async (repoFullName: string) => {
-    if (!repoFullName) return;
-
-    // เลือก API ตาม Provider ปัจจุบัน
-    const endpoint = provider === 'gitlab'
-      ? `/api/gitlab/branches`
-      : `/api/github/branches`;
-
+    if (!repoFullName || !repoProvider) return;
+    const endpoint = repoProvider === 'gitlab' ? `/api/gitlab/branches` : `/api/github/branches`;
     try {
       const res = await fetch(`${endpoint}?full_name=${encodeURIComponent(repoFullName)}`);
       const data = await res.json();
+      setAvailableBranches(data.branches ? data.branches.map((b: any) => b.name) : []);
+    } catch (error) { setAvailableBranches([]); }
+  }, [repoProvider]);
 
-      if (data.branches) {
-        // Map เอาแค่ชื่อ Branch มาเก็บ
-        setAvailableBranches(data.branches.map((b: any) => b.name));
-      } else {
-        setAvailableBranches([]);
-      }
-    } catch (error) {
-      console.error("Failed to fetch branches:", error);
-      setAvailableBranches([]);
+  useEffect(() => {
+    if (selectedRepo) {
+      if (selectedRepo.default_branch) setSelectedBranch(selectedRepo.default_branch);
+      fetchBranches(selectedRepo.full_name);
+      if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
     }
-  }, [provider]); // เมื่อ provider เปลี่ยน ฟังก์ชันจะอัปเดต URL ใหม่
+  }, [selectedRepo]);
 
   // =========================================================
-  // 🧠 CORE ENGINE: สร้าง YAML (แบบไม่ลบโค้ดที่ user พิมพ์เพิ่ม)
+  // 4. SYNTAX SWITCHING
   // =========================================================
-  const generateYamlFromValues = (values: Record<string, any>, lang: string, currentYaml: string) => {
-    let doc: any = {};
+  const setProvider = (newSyntax: "github" | "gitlab") => {
+    setSyntaxProvider(newSyntax);
+    isUpdatingFromUI.current = true;
+    let newYaml = generateYamlFromValues(componentValues, newSyntax, fileContent);
+    setFileContent(newYaml);
+  };
 
-    try {
-      // 🔥 FIX 1: พยายามโหลดโค้ดปัจจุบันก่อน
-      doc = yaml.load(currentYaml);
+  const getFullFilePath = (fileName: string) => {
+    if (selectedRepo?.provider === 'gitlab') return fileName;
+    return `.github/workflows/${fileName}`;
+  };
 
-      // ถ้าโหลดแล้วเป็น null (ไฟล์ว่าง) หรือไม่ใช่ object ให้เริ่มใหม่
-      if (!doc || typeof doc !== 'object') {
-        doc = {};
-      }
-    } catch (e) {
-      // 🔥 FIX 2: จุดสำคัญที่สุด! 
-      // ถ้า User พิมพ์โค้ดค้างไว้ (Syntax Error) แล้วไปกดปุ่ม UI
-      // ห้าม Gen ทับเด็ดขาด! ให้คืนค่าเดิมกลับไป เพื่อรักษาโค้ด User ไว้
-      console.warn("YAML Syntax Error: Skipping UI update to prevent data loss.");
-      return currentYaml;
-    }
+  // =========================================================
+  // 5. GENERATOR ENGINE
+  // =========================================================
+  const generateYamlFromValues = (values: Record<string, any>, targetSyntax: string, currentYaml: string) => {
+    if (!categories || categories.length === 0) return currentYaml;
 
-    // หา Default Branch
-    const defaultBranch = selectedRepo?.default_branch || 'main';
+    const allContext: Record<string, any> = {};
 
-    // ------------------------------------------------
-    // 🟢 GITHUB LOGIC
-    // ------------------------------------------------
-    if (lang === 'github') {
-      // ลบส่วนที่เป็นของ GitLab ทิ้ง (แต่เก็บ jobs, env, steps ไว้)
-      delete doc.workflow;
-      delete doc.stages;
-      // (อย่าเผลอไปลบ doc.jobs นะครับ!)
-
-      if (!doc.on) doc.on = {};
-
-      // --- Push ---
-      const pushEnabled = values['enable_push'];
-      let pushBranches = values['push_branches'];
-
-      if (pushEnabled) {
-        if (!doc.on.push) doc.on.push = {};
-        doc.on.push.branches = (pushBranches && pushBranches.length > 0) ? pushBranches : [defaultBranch];
-      } else {
-        delete doc.on.push;
-      }
-
-      // --- Pull Request ---
-      const prEnabled = values['enable_pr'];
-      let prBranches = values['pr_branches'];
-
-      if (prEnabled) {
-        if (!doc.on.pull_request) doc.on.pull_request = {};
-        doc.on.pull_request.branches = (prBranches && prBranches.length > 0) ? prBranches : [defaultBranch];
-      } else {
-        delete doc.on.pull_request;
-      }
-
-      if (Object.keys(doc.on).length === 0) delete doc.on;
-    }
-
-    // ------------------------------------------------
-    // 🔴 GITLAB LOGIC
-    // ------------------------------------------------
-    else if (lang === 'gitlab') {
-      // ลบส่วนที่เป็นของ GitHub ทิ้ง
-      delete doc.on;
-      delete doc.name;
-
-      const rules: any[] = [];
-
-      // --- Push ---
-      if (values['enable_push']) {
-        let branches = values['push_branches'];
-        if (!branches || branches.length === 0) branches = [defaultBranch];
-
-        branches.forEach((b: string) => {
-          rules.push({ if: `$CI_COMMIT_BRANCH == "${b}"` });
+    categories.forEach(cat => {
+      cat.components.forEach((comp: any) => {
+        comp.uiConfig?.fields?.forEach((field: any) => {
+          if (field.defaultValue !== undefined) {
+            allContext[field.id] = field.defaultValue;
+          }
         });
-      }
-
-      // --- Pull Request ---
-      if (values['enable_pr']) {
-        let branches = values['pr_branches'];
-        if (!branches || branches.length === 0) branches = [defaultBranch];
-
-        branches.forEach((b: string) => {
-          rules.push({ if: `$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"` });
-        });
-      }
-
-      if (rules.length > 0) {
-        if (!doc.workflow) doc.workflow = {};
-        doc.workflow.rules = rules;
-      } else {
-        delete doc.workflow;
-      }
-    }
-
-    // Convert Object -> YAML  
-    try {
-      return yaml.dump(doc, {
-        indent: 2,
-        lineWidth: -1,
-        noRefs: true,
-        // เคล็ดลับ: sortKeys: true บางทีช่วยให้โค้ดเป็นระเบียบ แต่ถ้า User ไม่ชอบให้ปิดไว้
       });
-    } catch (e) {
-      return currentYaml;
+    });
+
+    Object.assign(allContext, values);
+
+    // 2. Base Structure
+    const pipelineName = allContext['pipeline_name'] || "My-Pipeline";
+    const runnerOS = allContext['runner_os'] || "ubuntu-latest";
+    const checkoutVer = allContext['checkout_ver'] || "v4";
+
+    let baseYaml = "";
+
+    if (targetSyntax === 'github') {
+      baseYaml = `name: ${pipelineName}
+on:
+{{TRIGGER_BLOCK}}
+jobs:
+  build-and-deploy:
+    runs-on: ${runnerOS}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@${checkoutVer}`;
+    } else {
+      baseYaml = `# Pipeline: ${pipelineName}
+workflow:
+  rules:
+{{TRIGGER_BLOCK}}
+stages:
+  - setup
+  - test
+  - build
+  - deploy
+`;
+    }
+
+    // 3. Trigger Block
+    let triggerBlock = "";
+    if (targetSyntax === 'github') {
+      if (allContext['enable_push']) {
+        const branches = allContext['push_branches'] || ['main'];
+        triggerBlock += `  push:\n    branches: ${JSON.stringify(branches)}\n`;
+      }
+      if (allContext['enable_pr']) {
+        const branches = allContext['pr_branches'] || ['main'];
+        triggerBlock += `  pull_request:\n    branches: ${JSON.stringify(branches)}\n`;
+      }
+      if (!triggerBlock) triggerBlock = "  workflow_dispatch:";
+    } else {
+      if (allContext['enable_push']) {
+        const branches = allContext['push_branches'] || ['main'];
+        branches.forEach((b: string) => triggerBlock += `    - if: $CI_COMMIT_BRANCH == "${b}"\n`);
+      }
+      if (allContext['enable_pr']) {
+        const branches = allContext['pr_branches'] || ['main'];
+        branches.forEach((b: string) => triggerBlock += `    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"\n`);
+      }
+      if (!triggerBlock) triggerBlock = "    - when: manual";
+    }
+
+    baseYaml = baseYaml.replace("{{TRIGGER_BLOCK}}", triggerBlock);
+
+    // 4. Components Loop
+    let stepsCode = "";
+    let jobsCode = "";
+
+    categories.forEach(cat => {
+      cat.components.forEach((comp: any) => {
+        if (comp.name.includes("Trigger") || comp.name.includes("Project Info") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
+
+        let isActive = false;
+        if (comp.type === 'group') {
+          const mainSwitch = comp.uiConfig.fields.find((f: any) => f.type === 'switch');
+          if (mainSwitch) {
+            isActive = allContext[mainSwitch.id] === true;
+          } else {
+            isActive = true;
+          }
+        } else {
+          isActive = allContext[comp.id] === true;
+        }
+
+        if (isActive && comp.syntaxes) {
+          const syntax = comp.syntaxes.find((s: any) => s.platform === targetSyntax);
+          if (syntax && syntax.template) {
+            let template = syntax.template;
+            template = template.replace(/{{([^}]+)}}/g, (match, variableName) => {
+              const val = allContext[variableName];
+              return val !== undefined ? val : match;
+            });
+
+            if (targetSyntax === 'github') {
+              stepsCode += "\n" + template;
+            } else {
+              jobsCode += "\n" + template;
+            }
+          }
+        }
+      });
+    });
+
+    if (targetSyntax === 'github') {
+      return baseYaml + stepsCode;
+    } else {
+      return baseYaml + jobsCode;
     }
   };
 
   // =========================================================
-  // 🔄 ACTION: UI -> Code
+  // ACTION: UI Update
   // =========================================================
   const updateComponentValue = (id: string, value: any) => {
     const defaultBranch = selectedRepo?.default_branch || 'main';
     let finalValue = value;
-
-    if ((id === 'push_branches' || id === 'pr_branches') && Array.isArray(value) && value.length === 0) {
-      finalValue = [defaultBranch];
-    }
-
-    let newValues = { ...componentValues, [id]: finalValue };
+    let nextValues = { ...componentValues };
 
     if (id === 'enable_push' && value === true) {
-      if (!newValues['push_branches'] || newValues['push_branches'].length === 0) newValues['push_branches'] = [defaultBranch];
+      if (!componentValues['push_branches'] || componentValues['push_branches'].length === 0) nextValues['push_branches'] = [defaultBranch];
     }
     if (id === 'enable_pr' && value === true) {
-      if (!newValues['pr_branches'] || newValues['pr_branches'].length === 0) newValues['pr_branches'] = [defaultBranch];
+      if (!componentValues['pr_branches'] || componentValues['pr_branches'].length === 0) nextValues['pr_branches'] = [defaultBranch];
     }
+    if (id === 'push_branches' && componentValues['enable_push'] === true && Array.isArray(value) && value.length === 0) finalValue = [defaultBranch];
+    if (id === 'pr_branches' && componentValues['enable_pr'] === true && Array.isArray(value) && value.length === 0) finalValue = [defaultBranch];
 
-    setComponentValues(newValues);
+    nextValues[id] = finalValue;
+    setComponentValues(nextValues);
+
     isUpdatingFromUI.current = true;
-    const newYaml = generateYamlFromValues(newValues, language, fileContent);
+    const newYaml = generateYamlFromValues(nextValues, syntaxProvider, fileContent);
     setFileContent(newYaml);
   };
 
-  // เปลี่ยนภาษา -> Gen ใหม่
-  useEffect(() => {
-    if (isAutoDetecting.current) { isAutoDetecting.current = false; return; }
-    if (Object.keys(componentValues).length > 0) {
-      isUpdatingFromUI.current = true;
-      const newYaml = generateYamlFromValues(componentValues, language, fileContent);
-      setFileContent(newYaml);
-    }
-  }, [language]);
-
-
   // =========================================================
-  // 🔄 LISTENER: Code -> UI (Auto Detect + Two-Way Sync)
+  // PARSER (Code -> UI)
   // =========================================================
   useEffect(() => {
     if (isUpdatingFromUI.current) { isUpdatingFromUI.current = false; return; }
 
-    // 🔥 FIX: ถ้า User ลบโค้ดหมดเกลี้ยง -> สั่งปิด Switch ทุกตัวทันที!
     if (!fileContent || !fileContent.trim()) {
-      setComponentValues({
-        enable_push: false,
-        push_branches: [],
-        enable_pr: false,
-        pr_branches: []
-      });
+      setComponentValues({});
       return;
     }
 
@@ -340,158 +306,167 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       const doc: any = yaml.load(fileContent);
       if (!doc || typeof doc !== 'object') return;
 
-      // 1. Auto-Detect Language
-      let detectedLang = language;
-      if (doc.workflow || doc.stages || (doc.include && !doc.on)) {
-        detectedLang = 'gitlab';
-      } else if (doc.on || doc.jobs) {
-        detectedLang = 'github';
-      }
+      let detected = syntaxProvider;
+      if (doc.workflow || doc.stages || (doc.include && !doc.on)) detected = 'gitlab';
+      else if (doc.on) detected = 'github';
 
-      if (detectedLang !== language) {
-        isAutoDetecting.current = true;
-        setLanguage(detectedLang);
-      }
+      if (detected !== syntaxProvider) setSyntaxProvider(detected);
 
-      // 2. Parse Values
       const newValues: Record<string, any> = {};
 
-      // 🟢 GitHub Parsing
-      if (detectedLang === 'github') {
-        if (doc.on?.push?.branches) {
-          newValues['enable_push'] = true;
-          newValues['push_branches'] = doc.on.push.branches;
-        } else { newValues['enable_push'] = false; }
+      categories.forEach(cat => {
+        cat.components.forEach((comp: any) => {
+          const syntax = comp.syntaxes?.find((s: any) => s.platform === detected);
 
-        if (doc.on?.pull_request?.branches) {
-          newValues['enable_pr'] = true;
-          newValues['pr_branches'] = doc.on.pull_request.branches;
-        } else { newValues['enable_pr'] = false; }
-      }
+          if (syntax && syntax.template) {
+            const template = syntax.template;
+            const lines = template.split('\n');
+            const signatureLine = lines.find((l: string) =>
+              l.trim().length > 5 && !l.includes('{{') && !l.includes('}}')
+            );
 
-      // 🔴 GitLab Parsing
-      else if (detectedLang === 'gitlab') {
-        const rules = doc.workflow?.rules;
-        const pushBranches: string[] = [];
-        const prBranches: string[] = [];
-
-        if (Array.isArray(rules)) {
-          rules.forEach((rule: any) => {
-            if (typeof rule.if === 'string') {
-              const pushMatch = rule.if.match(/\$CI_COMMIT_BRANCH == "([^"]+)"/);
-              if (pushMatch) pushBranches.push(pushMatch[1]);
-
-              const prMatch = rule.if.match(/\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "([^"]+)"/);
-              if (prMatch) prBranches.push(prMatch[1]);
+            let isDetected = false;
+            if (signatureLine && fileContent.includes(signatureLine.trim())) {
+              isDetected = true;
             }
-          });
-        }
+            else if (comp.name.includes("Project Info") && doc.name) {
+              isDetected = true;
+            }
 
-        newValues['enable_push'] = pushBranches.length > 0;
-        newValues['push_branches'] = pushBranches;
+            if (isDetected) {
+              const mainSwitch = comp.uiConfig.fields.find((f: any) => f.type === 'switch');
+              if (mainSwitch) {
+                newValues[mainSwitch.id] = true;
+              }
 
-        newValues['enable_pr'] = prBranches.length > 0;
-        newValues['pr_branches'] = prBranches;
-      }
-
-      // อัปเดต UI State
-      setComponentValues(prev => {
-        const merged = { ...prev, ...newValues };
-        const isChanged = JSON.stringify(prev) !== JSON.stringify(merged);
-        return isChanged ? merged : prev;
+              comp.uiConfig.fields.forEach((field: any) => {
+                if (field.type === 'switch') return;
+                const templateLine = lines.find((l: string) => l.includes(`{{${field.id}}}`));
+                if (templateLine) {
+                  const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  const parts = templateLine.split(`{{${field.id}}}`);
+                  if (parts.length === 2) {
+                    const prefix = escapeRegExp(parts[0].trim());
+                    const suffix = escapeRegExp(parts[1].trim());
+                    const regex = new RegExp(`${prefix}(.*?)${suffix}`);
+                    const match = fileContent.match(regex);
+                    if (match && match[1]) {
+                      let extractedValue = match[1].trim();
+                      extractedValue = extractedValue.replace(/^['"]|['"]$/g, '');
+                      newValues[field.id] = extractedValue;
+                    }
+                  }
+                }
+                if (field.id === 'pipeline_name' && doc.name) {
+                  newValues['pipeline_name'] = doc.name;
+                }
+              });
+            }
+          }
+        });
       });
 
+      if (detected === 'github') {
+        if (doc.on?.push?.branches) { newValues['enable_push'] = true; newValues['push_branches'] = doc.on.push.branches; }
+        if (doc.on?.pull_request?.branches) { newValues['enable_pr'] = true; newValues['pr_branches'] = doc.on.pull_request.branches; }
+      }
+
+      setComponentValues(prev => ({ ...prev, ...newValues }));
     } catch (e) { }
-  }, [fileContent]);
+  }, [fileContent, categories]);
 
   // =========================================================
-  // 🔄 ACTION: เปลี่ยนชื่อไฟล์ (รองรับทั้ง Rename และ Create New)
+  // FILE OPS
   // =========================================================
-  const renameCurrentFile = async (newName: string) => {
-
-    if (!selectedRepo || !newName) return;
-
-    // ถ้าชื่อใหม่เหมือนชื่อเดิมเป๊ะ ก็ไม่ต้องทำอะไร
-    if (selectedFile && newName === selectedFile) return;
-
-    const oldName = selectedFile || ""; // ถ้าไม่มีชื่อเก่า ให้เป็นค่าว่าง
-
-    // 1. Lock UI
-    isRenamingRef.current = true;
-    setSelectedFile(newName); // เปลี่ยนชื่อหัวกระดาษรอไว้เลย
-
+  const refreshFileList = useCallback(async () => {
+    if (!selectedRepo || !selectedBranch || !repoProvider) return;
+    setIsLoading(true);
     try {
-      // 2. บันทึกไฟล์ใหม่ (Save New)
-      // ไม่ว่าจะเป็นการเปลี่ยนชื่อ หรือ สร้างใหม่ ก็ต้อง Save ไฟล์ใหม่ลงไปก่อน
-      await fetch('/api/pipeline/draft', {
+      await fetch('/api/pipeline/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          filePath: ".github/workflows/" + newName,
-          content: fileContent, // ใช้เนื้อหาปัจจุบัน (ถ้าสร้างใหม่ เนื้อหาอาจจะว่าง หรือมี default)
-          uiState: componentValues,
-          branch: selectedBranch
-        })
+        body: JSON.stringify({ repoFullName: selectedRepo.full_name, branch: selectedBranch, provider: repoProvider })
       });
-
-      // 3. ลบไฟล์เก่า (Delete Old) 
-      // 🔥 เช็คก่อน: ต้องมีชื่อเก่า และชื่อเก่าต้องไม่ว่างเปล่า ถึงจะสั่งลบ
-      if (oldName && oldName.trim() !== "") {
-        try {
-          const fileExists = draftList.some(f => f.fileName === oldName) || gitFileList.some(f => f.fileName === oldName);
-          if (fileExists) {
-            await fetch('/api/pipeline/draft', {
-              method: 'DELETE',
-              body: JSON.stringify({
-                repoFullName: selectedRepo.full_name,
-                filePath: ".github/workflows/" + oldName,
-                branch: selectedBranch
-              })
-            });
-          }
-        } catch (deleteError) {
-          console.warn("Skipped deleting old file:", deleteError);
-        }
-      }
-
-      // 4. Update Reference
-      lastSavedContent.current = fileContent;
-
-      // 5. Refresh List
-      await refreshFileList();
-
-    } catch (e) {
-      console.error("Operation failed", e);
-      // Revert UI กลับถ้าพังจริงๆ
-      if (oldName) setSelectedFile(oldName);
-      isRenamingRef.current = false;
-    }
-  };
-
-  const refreshFileList = useCallback(async () => {
-    if (!selectedRepo || !selectedBranch) { setFileList([]); setDraftList([]); setGitFileList([]); return; }
-    try {
       const res = await fetch(`/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}`);
       const data = await res.json();
-      setDraftList(data.drafts || []); setGitFileList(data.gitFiles || []); setFileList([...(data.drafts || []), ...(data.gitFiles || [])]);
-    } catch (e) { console.error(e); }
-  }, [selectedRepo, selectedBranch]);
+      setDraftList(data.drafts || []);
+      setGitFileList(data.gitFiles || []);
+      setFileList([...(data.drafts || []), ...(data.gitFiles || [])]);
+    } catch (e) { console.error(e); } finally { setIsLoading(false); }
+  }, [selectedRepo, selectedBranch, repoProvider]);
 
-  useEffect(() => { refreshFileList(); setSelectedFile(""); setComponentValues({}); }, [refreshFileList]);
+  useEffect(() => { refreshFileList(); setSelectedFile(""); setComponentValues({}); }, [selectedRepo, selectedBranch]);
 
+  // =========================================================
+  // 📂 LOAD CONTENT (เพิ่ม Skip Logic แล้ว 🔥)
+  // =========================================================
+  useEffect(() => {
+    // 🛑 1. ถ้ามีธง Skip -> รีเซ็ตธงแล้วจบเลย (ห้ามโหลดของเก่ามาทับ)
+    if (skipLoadOnce.current) {
+        skipLoadOnce.current = false;
+        return;
+    }
+
+    if (!selectedRepo || !selectedFile || !repoProvider) {
+      if (!selectedFile) {
+        setFileContent("");
+        setOriginalContent("");
+      }
+      return;
+    }
+    if (isRenamingRef.current) { isRenamingRef.current = false; return; }
+    
+    const loadContent = async () => {
+      try {
+        const path = getFullFilePath(selectedFile);
+        const params = new URLSearchParams({
+          repoFullName: selectedRepo.full_name,
+          branch: selectedBranch,
+          filePath: path
+        });
+        const resGit = await fetch(`/api/pipeline/read?${params.toString()}`);
+        const dataGit = await resGit.json();
+        const gitRaw = dataGit.content || "";
+        setOriginalContent(gitRaw);
+        const resDraft = await fetch(`/api/pipeline/draft?${params.toString()}`);
+        const dataDraft = await resDraft.json();
+        
+        if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {
+          setFileContent(dataDraft.content);
+          if (dataDraft.uiState) {
+            setComponentValues(dataDraft.uiState);
+            if (dataDraft.uiState.__syntax) {
+              setSyntaxProvider(dataDraft.uiState.__syntax as "github" | "gitlab");
+            }
+          }
+          lastSavedContent.current = dataDraft.content;
+        } else {
+          setFileContent(gitRaw);
+          setComponentValues({});
+          if (selectedRepo.provider) {
+            setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
+          }
+          lastSavedContent.current = gitRaw;
+        }
+      } catch (e) { console.error(e); }
+    };
+    loadContent();
+  }, [selectedRepo, selectedBranch, selectedFile]);
+
+  // Auto Save
   const saveDraftToDB = useCallback(async (content: string) => {
     if (!selectedRepo || !selectedFile || content === lastSavedContent.current) return;
     try {
       setIsSaving(true);
+      const stateToSave = { ...componentValues, __syntax: syntaxProvider };
       await fetch('/api/pipeline/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: ".github/workflows/" + selectedFile, content: content, uiState: componentValues, branch: selectedBranch || "main" })
+        body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(selectedFile), content, uiState: stateToSave, branch: selectedBranch })
       });
       lastSavedContent.current = content;
-    } catch (e) { console.error(e); } finally { setIsSaving(false); }
-  }, [selectedRepo, selectedBranch, selectedFile, componentValues]);
+    } catch (e) { } finally { setIsSaving(false); }
+  }, [selectedRepo, selectedBranch, selectedFile, componentValues, repoProvider, syntaxProvider]);
 
   useEffect(() => {
     if (!selectedRepo || !selectedFile) return;
@@ -499,32 +474,95 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [fileContent, selectedRepo, saveDraftToDB, selectedFile]);
 
-  useEffect(() => {
-    if (!selectedRepo || !selectedBranch || !selectedFile) { if (!selectedFile) { setFileContent(""); setComponentValues({}); lastSavedContent.current = ""; } return; }
-    if (isRenamingRef.current) { isRenamingRef.current = false; return; }
-    const loadDraft = async () => {
-      try {
-        const params = new URLSearchParams({ repoFullName: selectedRepo.full_name, branch: selectedBranch, filePath: ".github/workflows/" + selectedFile });
-        const res = await fetch(`/api/pipeline/draft?${params.toString()}`);
-        const data = await res.json();
-        if (data.content !== undefined) {
-          setFileContent(data.content); lastSavedContent.current = data.content;
-          if (data.uiState) setComponentValues(data.uiState);
-        } else { setFileContent(""); setComponentValues({}); lastSavedContent.current = ""; }
-      } catch (e) { console.error(e); }
-    };
-    loadDraft();
-  }, [selectedRepo, selectedBranch, selectedFile]);
-
-  const commitFile = async (message: string) => {
-    if (!selectedRepo || !selectedFile) return false;
-    try { setIsSaving(true); const res = await fetch('/api/pipeline/commit', { method: 'POST', body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: ".github/workflows/" + selectedFile, content: fileContent, message: message, branch: selectedBranch }) }); if (res.ok) { await refreshFileList(); return true; } } catch (e) { console.error(e); } finally { setIsSaving(false); } return false;
+  const renameCurrentFile = async (newName: string) => {
+    if (!selectedRepo || !newName) return;
+    isRenamingRef.current = true;
+    setSelectedFile(newName);
+    try { await saveDraftToDB(fileContent); await refreshFileList(); } catch (e) { isRenamingRef.current = false; }
   };
 
-  const discardDraft = async () => { if (!selectedRepo || !selectedFile) return false; if (!confirm(`Discard changes?`)) return false; try { setIsSaving(true); const res = await fetch('/api/pipeline/draft', { method: 'DELETE', body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: ".github/workflows/" + selectedFile, branch: selectedBranch }) }); if (res.ok) { await refreshFileList(); setSelectedFile(""); setComponentValues({}); return true; } } catch (e) { console.error(e); } finally { setIsSaving(false); } return false; };
+  const commitFile = async (message: string) => {
+    if (!selectedRepo || !selectedFile || !repoProvider) return false;
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/pipeline/commit', { method: 'POST', body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(selectedFile), content: fileContent, message, branch: selectedBranch, provider: repoProvider }) });
+      if (res.ok) { await refreshFileList(); return true; }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+    return false;
+  };
+
+  const discardDraft = async () => {
+    if (!selectedRepo || !selectedFile) return false;
+    if (!confirm(`Discard?`)) return false;
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/pipeline/draft', { method: 'DELETE', body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(selectedFile), branch: selectedBranch }) });
+      if (res.ok) { await refreshFileList(); setSelectedFile(""); return true; }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+    return false;
+  };
+
+  // =========================================================
+  // 🚀 AUTO SETUP (แก้ชื่อไฟล์ + กัน Race Condition แล้ว 🔥)
+  // =========================================================
+  const autoSetup = async () => {
+    if (!selectedRepo || !repoProvider) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/pipeline/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoFullName: selectedRepo.full_name,
+          branch: selectedBranch,
+          provider: repoProvider
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.config) {
+        // 1. ตั้งชื่อไฟล์
+        let targetFileName = "";
+        if (repoProvider === 'gitlab') {
+          targetFileName = ".gitlab-ci.yml";
+        } else {
+          targetFileName = "main.yml";
+        }
+
+        // 2. 🔥 บอก useEffect ว่า "อย่าโหลดของเก่ามาทับนะ"
+        if (selectedFile !== targetFileName) {
+            skipLoadOnce.current = true; 
+            setSelectedFile(targetFileName);
+        }
+
+        // 3. Update UI & Code
+        const newValues = { ...componentValues, ...data.config };
+        setComponentValues(newValues);
+
+        isUpdatingFromUI.current = true;
+        const newYaml = generateYamlFromValues(newValues, syntaxProvider, fileContent);
+        setFileContent(newYaml);
+
+        alert(`✅ Auto Setup Complete!\nDetected: ${data.config.use_node ? 'Node.js' : ''} ${data.config.docker_build ? 'Docker' : ''}`);
+      }
+    } catch (e) {
+      console.error("Auto Setup Failed", e);
+      alert("❌ Auto setup failed. Please configure manually.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <PipelineContext.Provider value={{ language, setLanguage, fileContent, setFileContent, selectedRepo, setSelectedRepo, selectedBranch, setSelectedBranch, isSaving, selectedFile, setSelectedFile, fileList, draftList, gitFileList, renameCurrentFile, commitFile, discardDraft, categories, availableBranches, componentValues, updateComponentValue, provider, setProvider, fetchBranches, availableRepos, fetchRepos, isLoading, }}>
+    <PipelineContext.Provider value={{
+      language: syntaxProvider, setLanguage: (lang: string) => setProvider(lang as "github" | "gitlab"),
+      provider: syntaxProvider, setProvider,
+      availableRepos, fetchRepos, selectedRepo, setSelectedRepo, selectedBranch, setSelectedBranch, fetchBranches, availableBranches,
+      fileContent, setFileContent, selectedFile, setSelectedFile, fileList, draftList, gitFileList,
+      originalContent,
+      isSaving, isLoading, renameCurrentFile, commitFile, discardDraft, categories, componentValues, updateComponentValue, autoSetup
+    }}>
       {children}
     </PipelineContext.Provider>
   );
