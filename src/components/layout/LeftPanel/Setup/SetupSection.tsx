@@ -167,6 +167,7 @@ export default function SetupSection() {
                                     type="text"
                                     value={componentValues[field.id] !== undefined ? componentValues[field.id] : (field.defaultValue || "")}
                                     onChange={(e) => updateComponentValue(field.id, e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
                                     placeholder={field.placeholder || ""}
                                     className="w-full bg-[#010819]/50 border border-white/10 text-slate-200 text-sm rounded-md px-3 py-2 focus:border-blue-500 focus:outline-none placeholder:text-slate-600 transition-colors"
                                   />

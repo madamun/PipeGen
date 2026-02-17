@@ -1,3 +1,5 @@
+// src/components/workspace/PipelineProvider.tsx
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
@@ -135,7 +137,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const setProvider = (newSyntax: "github" | "gitlab") => {
     setSyntaxProvider(newSyntax);
     isUpdatingFromUI.current = true;
-    let newYaml = generateYamlFromValues(componentValues, newSyntax, fileContent);
+
+    const nextValues = { ...componentValues };
+
+    categories.forEach(cat => {
+      cat.components.forEach((comp: any) => {
+        comp.uiConfig?.fields?.forEach((field: any) => {
+          if (field.platformDefaults && field.platformDefaults[newSyntax]) {
+            nextValues[field.id] = field.platformDefaults[newSyntax];
+          }
+        });
+      });
+    });
+
+    setComponentValues(nextValues);
+
+    let newYaml = generateYamlFromValues(nextValues, newSyntax, fileContent);
     setFileContent(newYaml);
   };
 
@@ -145,7 +162,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   };
 
   // =========================================================
-  // 5. GENERATOR ENGINE
+  // 5. GENERATOR ENGINE (🔥 แก้ตรงนี้เพื่อให้ Cache มา!)
   // =========================================================
   const generateYamlFromValues = (values: Record<string, any>, targetSyntax: string, currentYaml: string) => {
     if (!categories || categories.length === 0) return currentYaml;
@@ -155,8 +172,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     categories.forEach(cat => {
       cat.components.forEach((comp: any) => {
         comp.uiConfig?.fields?.forEach((field: any) => {
-          if (field.defaultValue !== undefined) {
-            allContext[field.id] = field.defaultValue;
+          // 1. ตั้งค่า Default ปกติก่อน
+          let val = field.defaultValue;
+
+          // 2. 🔥 เช็คว่ามีค่าพิเศษสำหรับ Platform นี้ไหม (platformDefaults)
+          // (targetSyntax คือ "github" หรือ "gitlab" ที่ส่งเข้ามาในฟังก์ชัน)
+          if (field.platformDefaults && field.platformDefaults[targetSyntax]) {
+            val = field.platformDefaults[targetSyntax];
+          }
+
+          if (val !== undefined) {
+            allContext[field.id] = val;
           }
         });
       });
@@ -182,10 +208,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@${checkoutVer}`;
     } else {
+      // 🔥 แก้ไข: เติม Cache Block เข้าไปใน Base Structure ของ GitLab
       baseYaml = `# Pipeline: ${pipelineName}
 workflow:
   rules:
 {{TRIGGER_BLOCK}}
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - node_modules/
+  policy: pull-push
+
 stages:
   - setup
   - test
@@ -398,13 +431,13 @@ stages:
   useEffect(() => { refreshFileList(); setSelectedFile(""); setComponentValues({}); }, [selectedRepo, selectedBranch]);
 
   // =========================================================
-  // 📂 LOAD CONTENT (เพิ่ม Skip Logic แล้ว 🔥)
+  // 📂 LOAD CONTENT (Skip Logic Corrected)
   // =========================================================
   useEffect(() => {
     // 🛑 1. ถ้ามีธง Skip -> รีเซ็ตธงแล้วจบเลย (ห้ามโหลดของเก่ามาทับ)
     if (skipLoadOnce.current) {
-        skipLoadOnce.current = false;
-        return;
+      skipLoadOnce.current = false;
+      return;
     }
 
     if (!selectedRepo || !selectedFile || !repoProvider) {
@@ -415,7 +448,7 @@ stages:
       return;
     }
     if (isRenamingRef.current) { isRenamingRef.current = false; return; }
-    
+
     const loadContent = async () => {
       try {
         const path = getFullFilePath(selectedFile);
@@ -430,7 +463,7 @@ stages:
         setOriginalContent(gitRaw);
         const resDraft = await fetch(`/api/pipeline/draft?${params.toString()}`);
         const dataDraft = await resDraft.json();
-        
+
         if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {
           setFileContent(dataDraft.content);
           if (dataDraft.uiState) {
@@ -503,7 +536,7 @@ stages:
   };
 
   // =========================================================
-  // 🚀 AUTO SETUP (แก้ชื่อไฟล์ + กัน Race Condition แล้ว 🔥)
+  // 🚀 AUTO SETUP (Logic Updated: Apply Platform Defaults)
   // =========================================================
   const autoSetup = async () => {
     if (!selectedRepo || !repoProvider) return;
@@ -530,18 +563,35 @@ stages:
           targetFileName = "main.yml";
         }
 
-        // 2. 🔥 บอก useEffect ว่า "อย่าโหลดของเก่ามาทับนะ"
+        // 2. ตั้งธง Skip
         if (selectedFile !== targetFileName) {
-            skipLoadOnce.current = true; 
-            setSelectedFile(targetFileName);
+          skipLoadOnce.current = true;
+          setSelectedFile(targetFileName);
         }
 
-        // 3. Update UI & Code
-        const newValues = { ...componentValues, ...data.config };
+        // 3. เริ่มต้น Values จาก Config ที่ Analyze มาได้
+        let newValues = { ...componentValues, ...data.config };
+
+        // 🔥🔥 เพิ่มจุดนี้: บังคับเปลี่ยนค่า Input ตาม Platform Defaults 🔥🔥
+        if (categories) {
+          categories.forEach(cat => {
+            cat.components.forEach((comp: any) => {
+              comp.uiConfig?.fields?.forEach((field: any) => {
+                // ถ้า Field นี้มีค่า Default เฉพาะของ Platform ที่เรากำลังใช้อยู่
+                if (field.platformDefaults && field.platformDefaults[repoProvider]) {
+                  // ให้ยัดค่านั้นใส่ newValues เลย (ทับค่าเดิม)
+                  newValues[field.id] = field.platformDefaults[repoProvider];
+                }
+              });
+            });
+          });
+        }
+
+        // 4. Update UI & Code
         setComponentValues(newValues);
 
         isUpdatingFromUI.current = true;
-        const newYaml = generateYamlFromValues(newValues, syntaxProvider, fileContent);
+        const newYaml = generateYamlFromValues(newValues, syntaxProvider, "");
         setFileContent(newYaml);
 
         alert(`✅ Auto Setup Complete!\nDetected: ${data.config.use_node ? 'Node.js' : ''} ${data.config.docker_build ? 'Docker' : ''}`);
