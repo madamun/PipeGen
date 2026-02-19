@@ -1,19 +1,20 @@
 // src/lib/pipelineEngine.ts
 
 import yaml from 'js-yaml';
+import type { ComponentCategory, ComponentValues } from '@/types/pipeline';
 
 // =========================================================
 // 1. GENERATOR: เปลี่ยน UI (Values) ให้กลายเป็น YAML Code
 // =========================================================
-export const generateYamlFromValues = (categories: any[], values: Record<string, any>, targetSyntax: string, currentYaml: string) => {
+export const generateYamlFromValues = (categories: ComponentCategory[], values: ComponentValues, targetSyntax: string, currentYaml: string) => {
   if (!categories || categories.length === 0) return currentYaml;
 
-  const allContext: Record<string, any> = {};
+  const allContext: Record<string, string | number | boolean | string[] | undefined> = {};
 
   // 1. โหลด Default Values ก่อนเสมอ
   categories.forEach(cat => {
-    cat.components.forEach((comp: any) => {
-      comp.uiConfig?.fields?.forEach((field: any) => {
+    cat.components.forEach((comp) => {
+      comp.uiConfig?.fields?.forEach((field) => {
         let val = field.defaultValue;
         if (field.platformDefaults && field.platformDefaults[targetSyntax]) {
           val = field.platformDefaults[targetSyntax];
@@ -61,13 +62,14 @@ export const generateYamlFromValues = (categories: any[], values: Record<string,
   let jobsCode = "";
 
   categories.forEach(cat => {
-    cat.components.forEach((comp: any) => {
+    cat.components.forEach((comp) => {
       if (comp.name.includes("Trigger") || comp.name.includes("Project Info") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
 
-      let isActive = comp.type === 'group' ? (comp.uiConfig.fields.find((f: any) => f.type === 'switch') ? allContext[comp.uiConfig.fields.find((f: any) => f.type === 'switch').id] === true : true) : allContext[comp.id] === true;
+      const switchField = comp.uiConfig?.fields?.find((f) => f.type === 'switch');
+      let isActive = comp.type === 'group' ? (switchField ? allContext[switchField.id] === true : true) : allContext[comp.id] === true;
 
       if (isActive && comp.syntaxes) {
-        const syntax = comp.syntaxes.find((s: any) => s.platform === targetSyntax);
+        const syntax = comp.syntaxes.find((s) => s.platform === targetSyntax);
         if (syntax && syntax.template) {
           let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => allContext[variableName] !== undefined ? allContext[variableName] : match);
           targetSyntax === 'github' ? stepsCode += "\n" + template : jobsCode += "\n" + template;
@@ -82,23 +84,24 @@ export const generateYamlFromValues = (categories: any[], values: Record<string,
 // =========================================================
 // 2. PARSER: อ่าน YAML Code กลับมาเป็น UI (Values) แบบอัจฉริยะ 🧠
 // =========================================================
-export const parseYamlToUI = (fileContent: string, categories: any[], currentSyntax: string) => {
+export const parseYamlToUI = (fileContent: string, categories: ComponentCategory[], currentSyntax: string) => {
   if (!fileContent || !fileContent.trim()) return { detectedSyntax: currentSyntax, newValues: {} };
 
   try {
-    const doc: any = yaml.load(fileContent);
+    const doc = yaml.load(fileContent) as Record<string, unknown> | null;
     if (!doc || typeof doc !== 'object') return { detectedSyntax: currentSyntax, newValues: {} };
 
     let detected = currentSyntax;
-    if (doc.workflow || doc.stages || (doc.include && !doc.on)) detected = 'gitlab';
-    else if (doc.on) detected = 'github';
+    const docAny = doc as Record<string, unknown>;
+    if (docAny.workflow || docAny.stages || (docAny.include && !docAny.on)) detected = 'gitlab';
+    else if (docAny.on) detected = 'github';
 
-    const newValues: Record<string, any> = {};
+    const newValues: ComponentValues = {};
 
     categories.forEach(cat => {
-      cat.components.forEach((comp: any) => {
-        const syntax = comp.syntaxes?.find((s: any) => s.platform === detected);
-        const mainSwitch = comp.uiConfig.fields.find((f: any) => f.type === 'switch');
+      cat.components.forEach((comp) => {
+        const syntax = comp.syntaxes?.find((s) => s.platform === detected);
+        const mainSwitch = comp.uiConfig?.fields?.find((f) => f.type === 'switch');
 
         if (syntax && syntax.template) {
           const lines = syntax.template.split('\n');
@@ -107,7 +110,7 @@ export const parseYamlToUI = (fileContent: string, categories: any[], currentSyn
           let isDetected = false;
           if (signatureLine && fileContent.includes(signatureLine.trim())) {
             isDetected = true;
-          } else if (comp.name.includes("Project Info") && doc.name) {
+          } else if (comp.name.includes("Project Info") && docAny.name) {
             isDetected = true;
           }
 
@@ -139,7 +142,7 @@ export const parseYamlToUI = (fileContent: string, categories: any[], currentSyn
 
                 if (contentMatches.length > 0) {
                   varsInLine.forEach((v, vIdx) => {
-                    const field = comp.uiConfig.fields.find((f: any) => f.id === v);
+                    const field = comp.uiConfig?.fields?.find((f) => f.id === v);
                     let matchedValue = "";
 
                     for (const match of contentMatches) {
@@ -150,7 +153,7 @@ export const parseYamlToUI = (fileContent: string, categories: any[], currentSyn
                         if (val === "|" || val === ">" || val === "") continue;
 
                         if (field && field.type === 'select' && field.options) {
-                          const isValid = field.options.some((opt: any) => opt.value === val);
+                          const isValid = field.options.some((opt) => opt.value === val);
                           if (isValid) {
                             matchedValue = val;
                             break;
@@ -174,8 +177,8 @@ export const parseYamlToUI = (fileContent: string, categories: any[], currentSyn
               }
             });
 
-            if (comp.name.includes("Project Info") && doc.name) {
-              newValues['pipeline_name'] = doc.name;
+            if (comp.name.includes("Project Info") && docAny.name) {
+              newValues['pipeline_name'] = String(docAny.name);
             }
 
           } else {
@@ -187,15 +190,16 @@ export const parseYamlToUI = (fileContent: string, categories: any[], currentSyn
       });
     });
 
-    if (detected === 'github') {
-      if (doc.on?.push?.branches) { 
-        newValues['enable_push'] = true; 
-        newValues['push_branches'] = doc.on.push.branches; 
+if (detected === 'github') {
+      const on = docAny.on as { push?: { branches?: string[] }; pull_request?: { branches?: string[] } } | undefined;
+      if (on?.push?.branches) {
+        newValues['enable_push'] = true;
+        newValues['push_branches'] = on.push.branches;
       } else { newValues['enable_push'] = false; }
 
-      if (doc.on?.pull_request?.branches) { 
-        newValues['enable_pr'] = true; 
-        newValues['pr_branches'] = doc.on.pull_request.branches; 
+      if (on?.pull_request?.branches) {
+        newValues['enable_pr'] = true;
+        newValues['pr_branches'] = on.pull_request.branches;
       } else { newValues['enable_pr'] = false; }
     }
 

@@ -1,9 +1,6 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
-
-// ประกาศตัวแปร prisma client (แบบง่าย)
-const prisma = new PrismaClient();
+import { prisma } from "@/server/db";
 
 export async function getPipelineComponents() {
   try {

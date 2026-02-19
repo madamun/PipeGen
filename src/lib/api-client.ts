@@ -1,5 +1,3 @@
-import { SelectedRepo } from "@/components/workspace/PipelineProvider";
-
 // 1. ดึงรายชื่อ Repos พร้อม Metadata
 export async function fetchRepos() {
   const res = await fetch("/api/github/repos");

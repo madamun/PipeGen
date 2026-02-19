@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
 // ✅ Import Types และ Engine เข้ามาใช้งาน
-import { Repo, PipelineFile, PipelineContextType } from "@/types/pipeline";
+import { Repo, PipelineFile, PipelineContextType, ComponentCategory, ComponentValues } from "@/types/pipeline";
 import { generateYamlFromValues, parseYamlToUI } from "@/lib/pipelineEngine";
 
 const PipelineContext = createContext<PipelineContextType | undefined>(undefined);
@@ -23,8 +23,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [fileList, setFileList] = useState<PipelineFile[]>([]);
   const [draftList, setDraftList] = useState<PipelineFile[]>([]);
   const [gitFileList, setGitFileList] = useState<PipelineFile[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [componentValues, setComponentValues] = useState<Record<string, any>>({});
+  const [categories, setCategories] = useState<ComponentCategory[]>([]);
+  const [componentValues, setComponentValues] = useState<ComponentValues>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -68,7 +68,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch(`${endpoint}?full_name=${encodeURIComponent(repoFullName)}`);
       const data = await res.json();
-      setAvailableBranches(data.branches ? data.branches.map((b: any) => b.name) : []);
+      setAvailableBranches(data.branches ? data.branches.map((b: { name: string }) => b.name) : []);
     } catch (error) { setAvailableBranches([]); }
   }, [repoProvider]);
 
@@ -88,8 +88,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     isUpdatingFromUI.current = true;
     const nextValues = { ...componentValues };
     categories.forEach(cat => {
-      cat.components.forEach((comp: any) => {
-        comp.uiConfig?.fields?.forEach((field: any) => {
+      cat.components.forEach((comp) => {
+        comp.uiConfig?.fields?.forEach((field) => {
           if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax];
         });
       });
@@ -98,7 +98,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, fileContent));
   };
 
-  const updateComponentValue = (id: string, value: any) => {
+  const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
     const defaultBranch = selectedRepo?.default_branch || 'main';
     let finalValue = value;
     let nextValues = { ...componentValues };
@@ -230,7 +230,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         if (selectedFile !== targetFileName) { skipLoadOnce.current = true; setSelectedFile(targetFileName); }
         
         let newValues = { ...componentValues, ...data.config };
-        categories.forEach(cat => cat.components.forEach((comp: any) => comp.uiConfig?.fields?.forEach((field: any) => {
+        categories.forEach(cat => cat.components.forEach((comp) => comp.uiConfig?.fields?.forEach((field) => {
           if (field.platformDefaults?.[repoProvider]) newValues[field.id] = field.platformDefaults[repoProvider];
         })));
         
