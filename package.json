@@ -39,6 +39,7 @@
     "lucide-react": "^0.542.0",
     "next": "15.5.2",
     "pnpm": "^10.18.3",
+    "radix-ui": "^1.4.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-icons": "^5.5.0",

@@ -1,3 +1,5 @@
+// src/components/layout/LeftPanel/Setup/SetupSection.tsx
+
 "use client";
 
 import { useState } from "react";
@@ -29,8 +31,22 @@ const IconMap: Record<string, any> = {
   Default: Box,
 };
 
-export default function SetupSection() {
-  const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>({});
+// ✅ 1. เพิ่ม Interface ตรงนี้ (บอกว่าฉันจะรับข้อมูล categoriesOpen มาจากแม่นะ)
+interface SetupSectionProps {
+  categoriesOpen: Record<string, boolean>;
+  setCategoriesOpen: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  isCollapsed?: boolean;
+  setIsCollapsed?: (val: boolean) => void;
+}
+
+
+export default function SetupSection({
+  categoriesOpen,
+  setCategoriesOpen,
+  isCollapsed,
+  setIsCollapsed
+}: SetupSectionProps) {
+
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({
     git: true,
     trigger: true,
@@ -56,11 +72,35 @@ export default function SetupSection() {
   if (categories.length === 0)
     return <div className="text-white/50 p-5 italic text-sm text-center">Loading configuration...</div>;
 
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col items-center gap-3 w-full mt-2">
+        {categories.map((cat) => {
+          const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => {
+                // พอกดไอคอน: ให้กางหน้าต่างออก แล้วเปิดหมวดหมู่นี้ให้เลยอัตโนมัติ
+                if (setIsCollapsed) setIsCollapsed(false);
+                setCategoriesOpen(prev => ({ ...prev, [cat.id]: true }));
+              }}
+              title={cat.name}
+              className="w-12 h-12 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-[#5184FB]/20 hover:border-[#5184FB]/50 transition-all text-white/70 hover:text-white shrink-0"
+            >
+              <Icon className="w-5 h-5" />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-[680px] space-y-4 px-1 pb-10">
       {categories.map((cat) => {
         const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
-        const isCatOpen = categoriesOpen[cat.id] ?? true;
+        const isCatOpen = categoriesOpen[cat.id] ?? false;
 
         return (
           <div key={cat.id} className="space-y-1">
@@ -139,7 +179,6 @@ export default function SetupSection() {
                               if (targetVal !== field.visibleIf.value) return null;
                             }
 
-                            // 🔥🔥🔥 แก้ตรงนี้: ย้าย Switch มาไว้ข้างหน้า 🔥🔥🔥
                             if (field.type === "switch") {
                               return (
                                 <div key={field.id} className="flex items-center justify-start gap-3 py-1.5 ml-1">

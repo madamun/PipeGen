@@ -34,6 +34,21 @@ export function SearchBar() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        
+        // 🔥🔥🔥 เพิ่มการตรวจสอบตรงนี้ (Guard Clause) 🔥🔥🔥
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+           target.tagName === "TEXTAREA" ||
+           target.isContentEditable ||
+           target.closest(".monaco-editor")) // ดักจับ Monaco Editor
+        ) {
+          // ถ้ากำลังพิมพ์ในช่องพิมพ์อื่นๆ อยู่ ให้ Return ออกไปเลย (ไม่ต้องทำอะไร)
+          return;
+        }
+        // 🔥🔥🔥 สิ้นสุดส่วนที่เพิ่ม 🔥🔥🔥
+
         e.preventDefault();
         inputRef.current?.focus();
       }
@@ -65,7 +80,6 @@ export function SearchBar() {
     </div>
   );
 }
-
 // --- Component หลัก: Navbar ---
 export default function Navbar() {
   return (

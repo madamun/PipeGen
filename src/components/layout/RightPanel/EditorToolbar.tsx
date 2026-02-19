@@ -1,3 +1,5 @@
+// src/components/layout/RightPanel/EditorToolbar.tsx
+
 "use client";
 
 import React, { useState } from "react";
@@ -10,6 +12,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
+// ✅ 1. Import Tooltip จาก Shadcn
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface EditorToolbarProps {
   content: string;
@@ -69,54 +78,96 @@ export default function EditorToolbar({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      
-      {/* 🟢 กลุ่มที่ 1: Zoom Only */}
-      <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">
-        <button onClick={() => handleZoom('out')} className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10">
-          <Minus className="w-3.5 h-3.5" />
-        </button>
-        <span className="w-[50px] text-center text-xs font-mono text-slate-200 select-none">
-          {currentPercent}%
-        </span>
-        <button onClick={() => handleZoom('in')} className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10">
-          <Plus className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* 🔵 กลุ่มที่ 2: Tools (Diff | Copy | Export) */}
-      <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">
+    // ✅ 2. เอา TooltipProvider มาครอบ (delayDuration=200 คือเอาเมาส์ชี้ 0.2 วิแล้วเด้งเลย)
+    <TooltipProvider delayDuration={200}>
+      <div className="flex items-center gap-2">
         
-        {/* Diff Toggle */}
-        <button onClick={() => setIsDiffMode(!isDiffMode)} className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
-          {isDiffMode ? <FileCode className="w-4 h-4" /> : <SplitSquareHorizontal className="w-4 h-4" />}
-          <span className="text-xs font-medium uppercase tracking-wider">{isDiffMode ? "Edit" : "Diff"}</span>
-        </button>
+        {/* 🟢 กลุ่มที่ 1: Zoom Only */}
+        <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => handleZoom('out')} className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10 outline-none">
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+              Zoom Out
+            </TooltipContent>
+          </Tooltip>
 
-        {/* Copy Button */}
-        <button onClick={handleCopy} className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10">
-          {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-        </button>
+          <span className="w-[50px] text-center text-xs font-mono text-slate-200 select-none cursor-default">
+            {currentPercent}%
+          </span>
 
-        {/* Export Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none">
-            <Share className="w-4 h-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-[#0f1e50] border-white/20 text-white min-w-[160px]">
-            <DropdownMenuLabel className="text-xs text-slate-400">Export As...</DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-white/10" />
-            <DropdownMenuItem onClick={handleDownloadYml} className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs">
-              <Download className="w-3.5 h-3.5 text-blue-400" /><span>Download YAML</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handlePrintPdf} className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs">
-              <Printer className="w-3.5 h-3.5 text-red-400" /><span>Print / Save PDF</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => handleZoom('in')} className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10 outline-none">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+              Zoom In
+            </TooltipContent>
+          </Tooltip>
+
+        </div>
+
+        {/* 🔵 กลุ่มที่ 2: Tools (Diff | Copy | Export) */}
+        <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">
+          
+          {/* Diff Toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => setIsDiffMode(!isDiffMode)} className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
+                {isDiffMode ? <FileCode className="w-4 h-4" /> : <SplitSquareHorizontal className="w-4 h-4" />}
+                <span className="text-xs font-medium uppercase tracking-wider">{isDiffMode ? "Edit" : "Diff"}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+              {isDiffMode ? "Switch to Editor Mode" : "View Code Differences"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Copy Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={handleCopy} className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10 outline-none">
+                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+              {copied ? "Copied to clipboard!" : "Copy Code"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Export Dropdown */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none">
+                  <Share className="w-4 h-4" />
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+                Export Options
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end" className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide">
+              <DropdownMenuLabel className="text-xs text-slate-400">Export As...</DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem onClick={handleDownloadYml} className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs">
+                <Download className="w-3.5 h-3.5 text-blue-400" /><span>Download YAML</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handlePrintPdf} className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs">
+                <Printer className="w-3.5 h-3.5 text-red-400" /><span>Print / Save PDF</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+        </div>
 
       </div>
-
-    </div>
+    </TooltipProvider>
   );
 }

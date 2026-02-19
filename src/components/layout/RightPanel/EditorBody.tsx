@@ -1,3 +1,5 @@
+// src/components/layout/RightPanel/EditorBody.tsx
+
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";

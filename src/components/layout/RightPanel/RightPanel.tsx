@@ -1,3 +1,5 @@
+// src/components/layout/RightPanel/RightPanel.tsx
+
 "use client";
 
 import * as React from "react";
@@ -35,7 +37,7 @@ function EditorHeader({ zoom, setZoom, isDiffMode, setIsDiffMode }: EditorHeader
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") { setIsEditing(false); if (!selectedFile) setSelectedFile(""); } };
 
   return (
-    <div className="flex h-11 px-4 pr-4 pl-[30px] justify-between items-center self-stretch border-b border-white/10">
+    <div className="flex h-11 px-4 pr-4 pl-[30px] justify-between items-center self-stretch border-b border-white/10 ">
       <div className="flex items-end flex-1 gap-1 h-full pb-[1px]">
         {(selectedFile || isEditing) && (
           <div className="flex items-center gap-2 px-3 py-1.5 min-w-[180px] max-w-[300px] rounded-[4px_8px_0_0] bg-[#010819] shadow-[0_-2px_4px_0_rgba(0,0,0,1)] text-slate-200 text-sm border-t border-l border-r border-white/10 relative top-[1px] h-full">
