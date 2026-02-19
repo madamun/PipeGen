@@ -1,4 +1,4 @@
-import { prisma } from "../server/prisma"; 
+import { prisma } from "@/server/db";
 import type { Account } from "@prisma/client";
 
 export async function getGithubAccount(userId: string): Promise<Account | null> {

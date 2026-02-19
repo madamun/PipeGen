@@ -1,6 +1,6 @@
 // src/app/api/github/repos/route.ts
 import { NextRequest } from "next/server";
-import { prisma } from "@/server/prisma";
+import { prisma } from "@/server/db";
 import { auth } from "@/server/auth";
 
 export const dynamic = "force-dynamic";

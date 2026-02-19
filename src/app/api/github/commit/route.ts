@@ -1,6 +1,6 @@
 // src/app/api/github/commit/route.ts
 import { NextRequest } from "next/server";
-import { prisma } from "@/server/prisma";
+import { prisma } from "@/server/db";
 import { auth } from "@/server/auth";
 
 export const runtime = "nodejs";
@@ -136,7 +136,6 @@ export async function POST(req: NextRequest) {
     // ผลลัพธ์: "pg/update-20260204-1959" (อ่านรู้เรื่องว่าแก้เรื่องอะไร เมื่อไหร่)
     const newBranch = `pg/${safeTitle}-${dateStr}`;
 
-    await createBranch(baseSha, newBranch);
     await createBranch(baseSha, newBranch);
     const result = await putFile(newBranch);
 

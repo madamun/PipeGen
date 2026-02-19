@@ -1,6 +1,6 @@
 // src/app/api/github/branches/route.ts
 import { NextRequest } from "next/server";
-import { prisma } from "@/server/prisma";
+import { prisma } from "@/server/db";
 import { auth } from "@/server/auth";
 
 export const dynamic = "force-dynamic"; // บังคับให้รันฝั่งเซิร์ฟเวอร์ทุกครั้ง

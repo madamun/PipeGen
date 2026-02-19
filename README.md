@@ -27,11 +27,14 @@ Create a `.env` file in the project root:
 
 See [Better Auth docs](https://www.better-auth.com/docs) for the exact env vars your setup needs.
 
+**Using Supabase as the database host:** Put your Supabase connection string in `DATABASE_URL`. In Supabase Dashboard go to **Project Settings → Database → Connection string**, choose **URI** and **Transaction** mode (recommended for Prisma), copy the string and replace `[YOUR-PASSWORD]` with your database password.
+
 ### 3. Database
 
 ```bash
 pnpm prisma generate
-pnpm prisma migrate dev
+pnpm prisma migrate dev   # local dev: create/apply migrations
+# or: pnpm prisma migrate deploy   # production / Supabase: apply existing migrations only
 # optional: pnpm prisma db seed
 ```
 
