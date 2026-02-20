@@ -220,11 +220,17 @@ stages:
             options: [
               { label: "npm (Clean Install - Recommended)", value: "npm ci" },
               { label: "npm (Standard)", value: "npm install" },
-              { label: "Yarn (Frozen Lockfile)", value: "yarn install --frozen-lockfile" },
+              {
+                label: "Yarn (Frozen Lockfile)",
+                value: "yarn install --frozen-lockfile",
+              },
               { label: "Yarn (Standard)", value: "yarn install" },
-              { label: "PNPM (Frozen Lockfile)", value: "pnpm install --frozen-lockfile" },
+              {
+                label: "PNPM (Frozen Lockfile)",
+                value: "pnpm install --frozen-lockfile",
+              },
               { label: "PNPM (Standard)", value: "pnpm install" },
-            ]
+            ],
           },
         ],
       },
@@ -232,7 +238,7 @@ stages:
         create: [
           // 🟢 GitHub Actions (มี Yarn อยู่แล้ว)
           {
-            platform: 'github',
+            platform: "github",
             template: `      - name: Prepare Package Manager
         run: |
           if [ "{{pkg_manager}}" == "pnpm" ]; then
@@ -246,7 +252,7 @@ stages:
           node-version: '{{node_version}}'
           cache: '{{pkg_manager}}'
       - name: Install Dependencies
-        run: {{install_cmd}}`
+        run: {{install_cmd}}`,
           },
           // 🦊 GitLab CI (🔥 เติม Yarn ให้แล้วครับ)
           {
@@ -476,7 +482,7 @@ stages:
     },
   });
 
-// 🔥 Docker Containerization (Final Corrected: Dynamic Inputs)
+  // 🔥 Docker Containerization (Final Corrected: Dynamic Inputs)
   await prisma.pipelineComponent.create({
     data: {
       categoryId: catBuild.id,
@@ -552,7 +558,7 @@ stages:
         if: {{docker_push}}
         run: |
           echo "{{docker_password}}" | docker login -u "{{docker_username}}" --password-stdin
-          docker push {{image_name}}:{{docker_tag}}`
+          docker push {{image_name}}:{{docker_tag}}`,
           },
 
           // 🦊 GitLab: ใช้ {{docker_username}} แทน Hardcode เช่นกัน
