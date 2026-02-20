@@ -1,0 +1,174 @@
+// src/app/api/gitlab/commit/route.ts
+import { NextRequest } from "next/server";
+import { prisma } from "../../../../packages/server/prisma";
+import { auth } from "../../../../packages/server/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Body = {
+  full_name: string; // "namespace/project"
+  baseBranch: string; // "main"
+  mode: "push" | "pull_request";
+  title: string;
+  message: string;
+  path: string; // e.g. ".gitlab-ci.yml"
+  content: string; // file content (YAML string)
+};
+
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = (await req.json()) as Body;
+  const { full_name, baseBranch, mode, title, message, path, content } = body;
+
+  if (!full_name || !baseBranch || !path || !content) {
+    return Response.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  // 1. ดึง Token GitLab
+  const account = await prisma.account.findFirst({
+    where: { userId: session.user.id, providerId: "gitlab" },
+    select: { accessToken: true },
+  });
+
+  if (!account?.accessToken) {
+    return Response.json({ error: "No GitLab token" }, { status: 400 });
+  }
+
+  const encodedId = encodeURIComponent(full_name);
+  const encodedPath = encodeURIComponent(path); // GitLab ต้อง Encode path เสมอ
+
+  try {
+    // 2. เช็คว่าไฟล์มีอยู่แล้วไหม? (เพื่อเลือก action: create หรือ update)
+    let action = "create";
+    const checkRes = await fetch(
+      `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}?ref=${baseBranch}`,
+      {
+        method: "HEAD",
+        headers: { Authorization: `Bearer ${account.accessToken}` },
+      },
+    );
+
+    if (checkRes.ok) action = "update";
+
+    // 3. เตรียม Payload
+    // GitLab Commits API รับ actions เป็น array (เผื่อแก้หลายไฟล์พร้อมกัน)
+    // แต่เราแก้ไฟล์เดียว
+    let targetBranch = baseBranch;
+
+    // ถ้าเป็นโหมด Pull Request (Merge Request) เราต้องสร้าง Branch ใหม่ก่อน
+    if (mode === "pull_request") {
+      // ✅ สร้างวันที่แบบอ่านง่าย (YYYYMMDD-HHmm)
+      const now = new Date();
+      const dateStr = now
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace("T", "-")
+        .slice(0, 13); // ได้ค่าเช่น 20260204-1959
+
+      // ผลลัพธ์: "pg-20260204-1959"
+      targetBranch = `pg-${dateStr}`;
+
+      // สร้าง Branch ใหม่จาก baseBranch
+      const createBranchRes = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodedId}/repository/branches`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${account.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            branch: targetBranch,
+            ref: baseBranch,
+          }),
+        },
+      );
+
+      if (!createBranchRes.ok) throw new Error("Failed to create new branch");
+    }
+
+    // 4. ยิง Commit
+    const commitPayload = {
+      branch: targetBranch,
+      commit_message: message || title || "Update pipeline via PipeGen",
+      actions: [
+        {
+          action: action, // "create" | "update"
+          file_path: path,
+          content: content,
+        },
+      ],
+    };
+
+    const commitRes = await fetch(
+      `https://gitlab.com/api/v4/projects/${encodedId}/repository/commits`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${account.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(commitPayload),
+      },
+    );
+
+    if (!commitRes.ok) {
+      const errorText = await commitRes.text(); // อ่านเป็น Text ดิบๆ ก่อน
+      console.error("❌ GitLab Raw Error:", errorText); // ปริ้นท์ออกมาดูเลย
+      console.error(
+        "❌ Payload ที่ส่งไป:",
+        JSON.stringify(commitPayload, null, 2),
+      ); // ปริ้นท์ของที่เราส่งไปดูด้วย
+
+      try {
+        const err = JSON.parse(errorText);
+        // GitLab ชอบส่ง error มาหลายท่า เช่น message, error, หรือ base array
+        const msg = err.message || err.error || JSON.stringify(err);
+        throw new Error(msg);
+      } catch (e) {
+        throw new Error("GitLab Error: " + errorText);
+      }
+    }
+
+    const commitData = await commitRes.json();
+
+    // 5. ถ้าเป็น Pull Request -> ให้สร้าง Merge Request ต่อทันที
+    let html_url = commitData.web_url; // Default คือลิงก์ไปหา Commit
+
+    if (mode === "pull_request") {
+      const mrRes = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodedId}/merge_requests`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${account.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source_branch: targetBranch,
+            target_branch: baseBranch,
+            title: title || "Update Pipeline",
+            description: message || "Generated by PipeGen",
+          }),
+        },
+      );
+
+      if (mrRes.ok) {
+        const mrData = await mrRes.json();
+        html_url = mrData.web_url; // เปลี่ยนลิงก์ให้พาไปหน้า Merge Request
+      }
+    }
+
+    return Response.json({ ok: true, html_url });
+  } catch (error: any) {
+    console.error("GitLab Commit Error:", error);
+    return Response.json(
+      { error: error.message || "Commit failed" },
+      { status: 500 },
+    );
+  }
+}

@@ -11,20 +11,20 @@ datasource db {
 // ==========================================
 
 model User {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String?
-  email         String    @unique
+  email         String   @unique
   emailVerified Boolean?
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  
+  accounts Account[]
+  sessions Session[]
+
   // ความสัมพันธ์กับโปรเจกต์
-  repositories  Repository[]
-  pipelines     Pipeline[]
+  repositories Repository[]
+  pipelines    Pipeline[]
 
   @@map("user")
 }
@@ -36,7 +36,7 @@ model Account {
   providerId            String
   accessToken           String?   @db.Text // แนะนำให้เติม @db.Text เผื่อไว้
   refreshToken          String?   @db.Text // แนะนำให้เติม @db.Text เผื่อไว้
-  idToken               String?   @db.Text 
+  idToken               String?   @db.Text
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
@@ -83,9 +83,9 @@ model Verification {
 model Repository {
   id             String   @id @default(cuid())
   userId         String
-  fullName       String   // เช่น "pongsakorn/devsecops-project"
-  provider       String   // เช่น "github", "gitlab"
-  providerRepoId String?  // ID จาก Git Provider
+  fullName       String // เช่น "pongsakorn/devsecops-project"
+  provider       String // เช่น "github", "gitlab"
+  providerRepoId String? // ID จาก Git Provider
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -99,9 +99,9 @@ model Pipeline {
   id          String   @id @default(cuid())
   repoId      String
   createdById String
-  name        String   // เช่น "Production Deployment"
-  filePath    String   // เช่น ".github/workflows/main.yml"
-  branch      String   // เช่น "main"
+  name        String // เช่น "Production Deployment"
+  filePath    String // เช่น ".github/workflows/main.yml"
+  branch      String // เช่น "main"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -110,7 +110,6 @@ model Pipeline {
   drafts     PipelineDraft[]
 
   @@unique([repoId, filePath, branch])
-
   @@map("pipeline")
 }
 
@@ -130,37 +129,37 @@ model PipelineDraft {
 // ==========================================
 
 model ComponentCategory {
-  id           String              @id @default(cuid())
-  name         String              // ชื่อโชว์บนเว็บ เช่น "Source Control"
-  slug         String              @unique // ชื่ออ้างอิงในโค้ด เช่น "source_control"
-  displayOrder Int                 // ลำดับการแสดงผล
-  icon         String?             // ชื่อ Icon (Lucide React)
-  
-  components   PipelineComponent[]
+  id           String  @id @default(cuid())
+  name         String // ชื่อโชว์บนเว็บ เช่น "Source Control"
+  slug         String  @unique // ชื่ออ้างอิงในโค้ด เช่น "source_control"
+  displayOrder Int // ลำดับการแสดงผล
+  icon         String? // ชื่อ Icon (Lucide React)
+
+  components PipelineComponent[]
 
   @@map("component_category")
 }
 
 model PipelineComponent {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   categoryId String
-  name       String   // ชื่อปุ่ม เช่น "On Push", "Node.js"
-  type       String   // ประเภท UI: "switch", "button", "input"
-  uiConfig   Json?    // เก็บ Config เพิ่มเติม เช่น Label, Default Value
-  
-  category   ComponentCategory @relation(fields: [categoryId], references: [id])
-  syntaxes   ComponentSyntax[]
+  name       String // ชื่อปุ่ม เช่น "On Push", "Node.js"
+  type       String // ประเภท UI: "switch", "button", "input"
+  uiConfig   Json? // เก็บ Config เพิ่มเติม เช่น Label, Default Value
+
+  category ComponentCategory @relation(fields: [categoryId], references: [id])
+  syntaxes ComponentSyntax[]
 
   @@map("pipeline_component")
 }
 
 model ComponentSyntax {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   componentId String
-  platform    String   // "github" หรือ "gitlab"
-  template    String   @db.Text // เก็บ Template YAML ที่มีตัวแปร {{variable}}
-  
-  component   PipelineComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  platform    String // "github" หรือ "gitlab"
+  template    String @db.Text // เก็บ Template YAML ที่มีตัวแปร {{variable}}
+
+  component PipelineComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
 
   @@map("component_syntax")
 }

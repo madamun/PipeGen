@@ -1,0 +1,176 @@
+// src/app/api/github/commit/route.ts
+import { NextRequest } from "next/server";
+import { prisma } from "../../../../packages/server/prisma";
+import { auth } from "../../../../packages/server/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Body = {
+  full_name: string; // "owner/repo"
+  baseBranch: string; // "main"
+  mode: "push" | "pull_request";
+  title: string;
+  message: string;
+  path: string; // e.g. ".github/workflows/pipegen.yaml"
+  content: string; // file content (YAML)
+};
+
+const slug = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 50);
+
+export async function POST(req: NextRequest) {
+  // 1) auth session
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  // 2) body
+  const body = (await req.json()) as Body;
+  const { full_name, baseBranch, mode, title, message, path, content } = body;
+
+  if (!full_name || !baseBranch || !mode || !path || !content) {
+    return Response.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  // 3) find token
+  const acc = await prisma.account.findFirst({
+    where: { userId: session.user.id, providerId: "github" },
+    select: { accessToken: true },
+  });
+  if (!acc?.accessToken) {
+    return Response.json({ error: "No GitHub token" }, { status: 400 });
+  }
+
+  const ghHeaders = {
+    Authorization: `Bearer ${acc.accessToken}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "pipe-gen-app",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  // helper: get file sha if exists
+  async function getFileSha(branch: string) {
+    const r = await fetch(
+      `https://api.github.com/repos/${full_name}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`,
+      { headers: ghHeaders },
+    );
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`getFileSha ${r.status}`);
+    const j = await r.json();
+    return j.sha as string | null;
+  }
+
+  // helper: put file (create/update)
+  async function putFile(branch: string) {
+    const sha = await getFileSha(branch);
+    const r = await fetch(
+      `https://api.github.com/repos/${full_name}/contents/${encodeURIComponent(path)}`,
+      {
+        method: "PUT",
+        headers: ghHeaders,
+        body: JSON.stringify({
+          message: message || "Update via PipeGen",
+          content: Buffer.from(content, "utf8").toString("base64"),
+          branch,
+          ...(sha ? { sha } : {}),
+        }),
+      },
+    );
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`putFile ${r.status} ${t.slice(0, 200)}`);
+    }
+    return r.json();
+  }
+
+  // helper: get base sha
+  async function getBaseSha(branch: string) {
+    const r = await fetch(
+      `https://api.github.com/repos/${full_name}/git/ref/heads/${encodeURIComponent(branch)}`,
+      { headers: ghHeaders },
+    );
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`getBaseSha ${r.status} ${t.slice(0, 120)}`);
+    }
+    const j = await r.json();
+    return j.object?.sha as string;
+  }
+
+  // helper: create new branch from baseSha
+  async function createBranch(fromSha: string, newBranch: string) {
+    const r = await fetch(
+      `https://api.github.com/repos/${full_name}/git/refs`,
+      {
+        method: "POST",
+        headers: ghHeaders,
+        body: JSON.stringify({ ref: `refs/heads/${newBranch}`, sha: fromSha }),
+      },
+    );
+    if (!r.ok && r.status !== 422) {
+      // 422 = already exists
+      const t = await r.text();
+      throw new Error(`createBranch ${r.status} ${t.slice(0, 120)}`);
+    }
+  }
+
+  try {
+    if (mode === "push") {
+      // direct push to baseBranch
+      const result = await putFile(baseBranch);
+      return Response.json({
+        ok: true,
+        html_url: result?.content?.html_url || result?.commit?.html_url || null,
+      });
+    }
+
+    // mode === "pull_request"
+    const baseSha = await getBaseSha(baseBranch);
+
+    // ✅ สร้างวันที่แบบอ่านง่าย (YYYYMMDD-HHmm)
+    const now = new Date();
+    const dateStr = now
+      .toISOString()
+      .replace(/[-:]/g, "") // ลบขีดและจุดคู่ทิ้ง
+      .replace("T", "-") // เปลี่ยน T เป็นขีด
+      .slice(0, 13); // ตัดเอาแค่ ปีเดือนวัน-ชมนาที (เช่น 20260204-1959)
+
+    // ตัดชื่อ Title ให้สั้นลง
+    const safeTitle = slug(title || "update");
+
+    // ผลลัพธ์: "pg/update-20260204-1959" (อ่านรู้เรื่องว่าแก้เรื่องอะไร เมื่อไหร่)
+    const newBranch = `pg/${safeTitle}-${dateStr}`;
+
+    await createBranch(baseSha, newBranch);
+    const result = await putFile(newBranch);
+
+    // create PR
+    const pr = await fetch(`https://api.github.com/repos/${full_name}/pulls`, {
+      method: "POST",
+      headers: ghHeaders,
+      body: JSON.stringify({
+        title: title || "PipeGen changes",
+        head: newBranch,
+        base: baseBranch,
+        body: message || "Changes generated by PipeGen",
+      }),
+    });
+    if (!pr.ok) {
+      const t = await pr.text();
+      throw new Error(`createPR ${pr.status} ${t.slice(0, 200)}`);
+    }
+    const prJ = await pr.json();
+
+    return Response.json({ ok: true, html_url: prJ.html_url });
+  } catch (e: any) {
+    return Response.json(
+      { error: e.message ?? "Commit error" },
+      { status: 500 },
+    );
+  }
+}
