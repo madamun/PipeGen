@@ -221,7 +221,7 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
         )}
         </div>
         {!isDiffMode && editorErrors.length > 0 && (
-          <div className="shrink-0 border-t border-white/10 bg-[#0f1e30] max-h-[140px] overflow-y-auto">
+          <div className="shrink-0 border-t border-white/10 bg-[#0f1e30] max-h-36 overflow-y-auto">
             <div className="px-2 py-1.5 text-xs font-medium text-slate-400 border-b border-white/5 flex items-center gap-2">
               <AlertCircle className="h-3.5 w-3.5 text-red-400" />
               YAML errors
@@ -232,7 +232,7 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
                   <button
                     type="button"
                     onClick={() => goToLine(err.line, err.column)}
-                    className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-200 hover:bg-white/10 cursor-pointer focus:outline-none focus:bg-white/10 font-mono"
+                    className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-200 hover:bg-white/10 cursor-pointer focus:outline-none focus:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 font-mono"
                   >
                     <span className="text-red-400">Line {err.line}</span>
                     {err.column > 1 && <span className="text-slate-500">:{err.column}</span>}

@@ -209,7 +209,10 @@ export default function CommitDialog(props: Props) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
-          <Button className="bg-[#3b82f6] hover:bg-[#2f6ad6] w-24">
+          <Button
+            className="bg-[#3b82f6] hover:bg-[#2f6ad6] w-24"
+            title={disabled ? "Select a repository and a file to commit" : undefined}
+          >
             Commit
           </Button>
         </DialogTrigger>
@@ -217,7 +220,7 @@ export default function CommitDialog(props: Props) {
 
       <DialogContent
         key={selectedRepo?.full_name || "no-repo"}
-        className="w-[450px] border border-[#B4CAFD] text-slate-50
+        className="max-w-[28rem] w-full border border-[#B4CAFD] text-slate-50
         bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]"
       >
         <DialogHeader>
@@ -232,7 +235,7 @@ export default function CommitDialog(props: Props) {
                   <span className="text-white">🐙</span>
                 )}
                 Push to{" "}
-                <span className="underline text-teal-300 truncate max-w-[200px]">
+                <span className="underline text-teal-300 truncate max-w-52">
                   {selectedRepo?.name ?? "—"}
                 </span>
               </>
@@ -256,7 +259,7 @@ export default function CommitDialog(props: Props) {
               onValueChange={setBranch}
               disabled={loadingBranches || branches.length === 0}
             >
-              <SelectTrigger className="bg-black/30 border-white/10 min-w-[110px]">
+              <SelectTrigger className="bg-black/30 border-white/10 min-w-28">
                 <SelectValue
                   placeholder={
                     loadingBranches ? "Loading branches..." : "Select a branch"
@@ -322,7 +325,7 @@ export default function CommitDialog(props: Props) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Description..."
-              className="min-h-[80px] bg-black/30 border-white/10"
+              className="min-h-20 bg-black/30 border-white/10"
             />
           </div>
 
@@ -360,13 +363,14 @@ export default function CommitDialog(props: Props) {
             </RadioGroup>
           </div>
 
-          <div className="w-full h-[2px] bg-[#3b82f6]/30 my-2"></div>
+          <div className="w-full h-0.5 bg-[#3b82f6]/30 my-2"></div>
 
           <div className="flex flex-col gap-2 pt-1">
             <Button
               className="w-full bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={disabled}
               onClick={() => setStep("preview")}
+              title={disabled ? "Select a repository and a file to commit" : undefined}
             >
               Preview
             </Button>

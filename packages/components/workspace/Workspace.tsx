@@ -8,7 +8,7 @@ export default function Workspace() {
 
   return (
     <div
-      className={`grid gap-6 h-[calc(100vh-136px)] overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out ${
+      className={`grid gap-6 h-[calc(100vh-128px)] overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out ${
         isCollapsed
           ? "grid-cols-[80px_1fr]"
           : "grid-cols-1 lg:grid-cols-[580px_1fr]"
@@ -18,7 +18,7 @@ export default function Workspace() {
         <LeftPanel isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
       </div>
 
-      <div className="h-full overflow-hidden mr-5">
+      <div className="h-full overflow-hidden">
         <RightPanel />
       </div>
     </div>

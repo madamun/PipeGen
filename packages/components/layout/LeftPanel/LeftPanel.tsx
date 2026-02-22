@@ -5,11 +5,7 @@ import {
   ArrowLeftToLine,
   ChevronsUpDown,
   ArrowRightToLine,
-  Github,
-  Gitlab,
 } from "lucide-react";
-// ⚠️ แก้ path SearchBar ให้ตรงกับที่คุณเก็บไว้นะครับ
-import SearchBar from "../../common/SearchBar";
 import SetupSection from "./Setup/SetupSection";
 import { usePipeline } from "../../workspace/PipelineProvider";
 
@@ -32,7 +28,7 @@ function LeftTop({
       {/* 🔥 ปุ่มลูกศร (กดแล้วสลับสถานะ ยุบ <-> ขยาย) */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="text-white/70 hover:text-white transition-colors flex shrink-0 items-center justify-center w-8 h-8 rounded-md hover:bg-white/10"
+        className="text-white/70 hover:text-white transition-colors flex shrink-0 items-center justify-center w-8 h-8 rounded-md hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
         title={isCollapsed ? "Expand Panel" : "Collapse Panel"}
       >
         {isCollapsed ? (
@@ -42,21 +38,14 @@ function LeftTop({
         )}
       </button>
 
-      {/* 🔥 ถ้าจอยัง "กางอยู่" ถึงจะแสดง Search กับปุ่ม ขยายทั้งหมด */}
       {!isCollapsed && (
-        <>
-          <div className="flex flex-1 justify-center px-4">
-            <div className="w-full max-w-[320px]">
-              <SearchBar />
-            </div>
-          </div>
-          <button
-            onClick={onToggleAll}
-            className="text-white/70 hover:text-white transition-colors shrink-0"
-          >
-            <ChevronsUpDown className="h-4 w-4" />
-          </button>
-        </>
+        <button
+          onClick={onToggleAll}
+          className="text-white/70 hover:text-white transition-colors shrink-0 rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
+          title="Expand or collapse all categories"
+        >
+          <ChevronsUpDown className="h-4 w-4" />
+        </button>
       )}
     </div>
   );
@@ -71,7 +60,7 @@ export default function LeftPanel({
   isCollapsed?: boolean;
   setIsCollapsed?: (val: boolean) => void;
 }) {
-  const { provider, setProvider, categories } = usePipeline();
+  const { categories } = usePipeline();
 
   // State การเปิด-ปิดหมวดหมู่หลัก (Lifting State Up)
   const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>(
