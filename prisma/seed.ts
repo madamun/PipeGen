@@ -1,8 +1,10 @@
 // prisma/seed.ts
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+
+import { prisma } from "../packages/lib/auth";
+
 
 async function main() {
+  
   console.log("🧹 Clearing old data...");
   await prisma.pipelineComponent.deleteMany({});
   await prisma.componentCategory.deleteMany({});

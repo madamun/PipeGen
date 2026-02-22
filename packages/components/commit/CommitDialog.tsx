@@ -21,7 +21,7 @@ import {
 } from "../ui/select";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { usePipeline } from "../workspace/PipelineProvider";
-import { GitBranch, GitPullRequest, UploadCloud } from "lucide-react";
+import { GitBranch, GitPullRequest, UploadCloud, Sparkles } from "lucide-react";
 
 type Mode = "pull_request" | "push";
 type Branch = { name: string; protected?: boolean };
@@ -29,8 +29,7 @@ type Branch = { name: string; protected?: boolean };
 type Props = { open?: boolean; onOpenChange?: (v: boolean) => void };
 
 export default function CommitDialog(props: Props) {
-  // ✅ ดึง provider มาด้วย เพื่อแยก Logic
-  const { selectedRepo, selectedBranch, fileContent, selectedFile, provider } =
+  const { selectedRepo, selectedBranch, fileContent, selectedFile, provider, originalContent } =
     usePipeline();
 
   const isControlled = typeof props.open === "boolean" && !!props.onOpenChange;
@@ -48,6 +47,7 @@ export default function CommitDialog(props: Props) {
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [loadingBranches, setLoadingBranches] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [step, setStep] = React.useState<"form" | "preview">("form");
 
   // คำนวณ Path ตามค่าย
   const targetPath = React.useMemo(() => {
@@ -134,6 +134,33 @@ export default function CommitDialog(props: Props) {
 
   const disabled = !selectedRepo?.full_name || !fileContent?.trim();
 
+  const displayFileName = selectedFile || (provider === "gitlab" ? ".gitlab-ci.yml" : "workflow");
+
+  function generateTitle() {
+    const t =
+      mode === "pull_request"
+        ? provider === "gitlab"
+          ? `Update CI: ${displayFileName}`
+          : `Update workflow: ${displayFileName}`
+        : `Update ${displayFileName}`;
+    setTitle(t);
+  }
+
+  function generateDescription() {
+    const desc = `Update ${displayFileName} via PipeGen\n\nTarget: ${targetPath}\nBranch: ${branch || "main"}`;
+    setMessage(desc);
+  }
+
+  const handleOpenChange = React.useCallback(
+    (next: boolean) => {
+      if (!next) setStep("form");
+      setOpen(next);
+    },
+    [setOpen],
+  );
+
+  const isUpdate = typeof originalContent === "string" && originalContent.trim().length > 0;
+
   async function onSubmit() {
     if (disabled || isSubmitting) return;
 
@@ -171,7 +198,7 @@ export default function CommitDialog(props: Props) {
       if (data?.html_url) window.open(data.html_url, "_blank");
 
       setOpen(false);
-    } catch (error) {
+    } catch {
       alert("Something went wrong");
     } finally {
       setIsSubmitting(false);
@@ -179,7 +206,7 @@ export default function CommitDialog(props: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
           <Button className="bg-[#3b82f6] hover:bg-[#2f6ad6] w-24">
@@ -195,18 +222,25 @@ export default function CommitDialog(props: Props) {
       >
         <DialogHeader>
           <DialogTitle className="text-xl flex items-center gap-2">
-            {provider === "gitlab" ? (
-              <span className="text-orange-500">🦊</span>
+            {step === "preview" ? (
+              "Commit preview"
             ) : (
-              <span className="text-white">🐙</span>
+              <>
+                {provider === "gitlab" ? (
+                  <span className="text-orange-500">🦊</span>
+                ) : (
+                  <span className="text-white">🐙</span>
+                )}
+                Push to{" "}
+                <span className="underline text-teal-300 truncate max-w-[200px]">
+                  {selectedRepo?.name ?? "—"}
+                </span>
+              </>
             )}
-            Push to{" "}
-            <span className="underline text-teal-300 truncate max-w-[200px]">
-              {selectedRepo?.name ?? "—"}
-            </span>
           </DialogTitle>
         </DialogHeader>
 
+        {step === "form" && (
         <div className="space-y-4">
           {/* แสดง Target Path ให้ชัดเจน */}
           <div className="text-xs text-slate-300 bg-black/20 p-2 rounded flex items-center gap-2 font-mono">
@@ -242,11 +276,22 @@ export default function CommitDialog(props: Props) {
 
           {/* Title */}
           <div className="space-y-2">
-            <Label className="text-slate-200">Title</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-slate-200">Title</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs border border-white/30 text-slate-300 hover:bg-white/10 gap-1"
+                onClick={generateTitle}
+              >
+                <Sparkles className="h-3 w-3" />
+                Generate
+              </Button>
+            </div>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              // 👇 แก้ตรงนี้ครับ: เช็ค provider ก่อน
               placeholder={
                 mode === "pull_request"
                   ? provider === "gitlab"
@@ -260,7 +305,19 @@ export default function CommitDialog(props: Props) {
 
           {/* Message */}
           <div className="space-y-2">
-            <Label className="text-slate-200">Commit Message</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-slate-200">Commit Message</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs border border-white/30 text-slate-300 hover:bg-white/10 gap-1"
+                onClick={generateDescription}
+              >
+                <Sparkles className="h-3 w-3" />
+                Generate
+              </Button>
+            </div>
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -308,16 +365,10 @@ export default function CommitDialog(props: Props) {
           <div className="flex flex-col gap-2 pt-1">
             <Button
               className="w-full bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={disabled || isSubmitting}
-              onClick={onSubmit}
+              disabled={disabled}
+              onClick={() => setStep("preview")}
             >
-              {isSubmitting
-                ? "Pushing..."
-                : mode === "pull_request"
-                  ? provider === "gitlab"
-                    ? "Create Merge Request"
-                    : "Create Pull Request"
-                  : "Push Changes"}
+              Preview
             </Button>
             <Button
               variant="secondary"
@@ -328,6 +379,44 @@ export default function CommitDialog(props: Props) {
             </Button>
           </div>
         </div>
+        )}
+
+        {step === "preview" && (
+          <div className="space-y-4">
+            <div className="text-sm text-slate-200 space-y-2 bg-black/20 rounded-lg p-3 font-mono">
+              <div><span className="text-slate-400">Repo:</span> {selectedRepo?.full_name ?? "—"}</div>
+              <div><span className="text-slate-400">Branch:</span> {branch || "main"}</div>
+              <div><span className="text-slate-400">File:</span> {targetPath}</div>
+              <div><span className="text-slate-400">Action:</span> {mode === "pull_request" ? (provider === "gitlab" ? "Merge Request" : "Pull Request") : "Direct Push"}</div>
+              <div><span className="text-slate-400">Summary:</span> {isUpdate ? "Will update 1 file" : "Will create new file"}</div>
+            </div>
+            <div className="text-xs text-slate-300 bg-black/20 p-2 rounded">
+              <span className="text-slate-400">Message:</span>
+              <pre className="mt-1 whitespace-pre-wrap break-words text-slate-200">
+                {message || title || `Update ${displayFileName} via PipeGen`}
+              </pre>
+            </div>
+            <p className="text-xs text-slate-400">
+              You can review changes in Diff mode in the editor on the right.
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                className="w-full bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmitting}
+                onClick={onSubmit}
+              >
+                {isSubmitting ? "Pushing..." : "Confirm and commit"}
+              </Button>
+              <Button
+                variant="secondary"
+                className="w-full border border-white/50 text-white bg-transparent hover:bg-white/10 rounded-lg py-2"
+                onClick={() => setStep("form")}
+              >
+                Back
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
