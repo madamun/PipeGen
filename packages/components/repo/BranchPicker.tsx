@@ -1,3 +1,5 @@
+// src/components/repo/BranchPicker.tsx
+
 "use client";
 
 import * as React from "react";
@@ -9,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { RefreshCw, GitBranch, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle } from "lucide-react";
 
 export default function BranchPicker() {
   // 1. Logic ใหม่: ดึงของจาก Provider
@@ -71,7 +73,7 @@ export default function BranchPicker() {
         onValueChange={(v) => setSelectedBranch(v)}
         disabled={isLoading || availableBranches.length === 0}
       >
-        <SelectTrigger className="h-6 w-[170px] text-white bg-[#0f1e50] border border-white/20">
+        <SelectTrigger className="h-8 min-w-44 w-44 text-white bg-[#0f1e50] border border-white/20 text-sm">
           <div className="flex items-center gap-2 overflow-hidden">
             <SelectValue
               placeholder={
@@ -89,7 +91,7 @@ export default function BranchPicker() {
           {availableBranches.length > 0 ? (
             availableBranches.map((b) => (
               <SelectItem
-                className="text-white hover:bg-white/10 cursor-pointer focus:bg-white/10 focus:text-white"
+                className="text-white hover:bg-white/10 cursor-pointer focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white"
                 key={b}
                 value={b}
               >

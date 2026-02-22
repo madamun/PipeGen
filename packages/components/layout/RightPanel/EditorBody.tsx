@@ -2,10 +2,11 @@
 
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Editor, { DiffEditor, OnMount } from "@monaco-editor/react";
 import { usePipeline } from "../../workspace/PipelineProvider";
-import { Loader2 } from "lucide-react";
+import { validateYaml, type YamlValidationError } from "../../../lib/pipelineEngine";
+import { Loader2, AlertCircle } from "lucide-react";
 
 interface EditorBodyProps {
   fontSize: number;
@@ -27,7 +28,10 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
 
   const [doc, setDoc] = useState(safeContent);
   const [isMounting, setIsMounting] = useState(true);
+  const [editorErrors, setEditorErrors] = useState<YamlValidationError[]>([]);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
 
   useEffect(() => {
     if (safeContent !== doc) {
@@ -35,6 +39,35 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeContent, selectedFile]);
+
+  useEffect(() => {
+    setEditorErrors([]);
+  }, [selectedFile]);
+
+  useEffect(() => {
+    if (isDiffMode) return;
+    const t = setTimeout(() => setEditorErrors(validateYaml(doc)), 300);
+    return () => clearTimeout(t);
+  }, [doc, isDiffMode]);
+
+  useEffect(() => {
+    if (isDiffMode || !monacoRef.current || !editorRef.current) return;
+    const model = editorRef.current.getModel();
+    if (!model) return;
+    const monaco = monacoRef.current;
+    const markers = editorErrors.map((e) => ({
+      startLineNumber: e.line,
+      startColumn: e.column,
+      endLineNumber: e.line,
+      endColumn: Math.max(e.column, 1) + 20,
+      severity: monaco.MarkerSeverity.Error,
+      message: e.message,
+    }));
+    monaco.editor.setModelMarkers(model, "yaml-validate", markers);
+    return () => {
+      monaco.editor.setModelMarkers(model, "yaml-validate", []);
+    };
+  }, [editorErrors, isDiffMode]);
 
   const handleEditorChange = (value: string | undefined) => {
     const val = value || "";
@@ -46,15 +79,25 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
     }, 500);
   };
 
+  const goToLine = useCallback((line: number, column: number) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    ed.revealLineInCenter(line);
+    ed.setPosition({ lineNumber: line, column: Math.max(1, column) });
+    ed.focus();
+  }, []);
+
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     setIsMounting(false);
+    editorRef.current = editor;
+    monacoRef.current = monaco;
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (!isDiffMode) setFileContent(editor.getValue());
     });
   };
 
-  const handleDiffMount = (editor: any) => {
+  const handleDiffMount = (editor: { updateOptions: (opts: Record<string, unknown>) => void; layout: () => void }) => {
     setIsMounting(false);
     setTimeout(() => {
       editor.updateOptions({
@@ -134,9 +177,10 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
         </div>
       )}
 
-      <div className="flex-1 relative overflow-hidden">
-        {isMounting && <LoadingOverlay />}
-        {isDiffMode ? (
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 min-h-0 relative overflow-hidden">
+          {isMounting && <LoadingOverlay />}
+          {isDiffMode ? (
           <DiffEditor
             height="100%"
             theme="vs-dark"
@@ -154,7 +198,6 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
               scrollBeyondLastLine: false,
               fontFamily: "'JetBrains Mono', monospace",
               diffWordWrap: "off",
-              theme: "vs-dark",
             }}
           />
         ) : (
@@ -175,6 +218,30 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
               padding: { top: 16, bottom: 16 },
             }}
           />
+        )}
+        </div>
+        {!isDiffMode && editorErrors.length > 0 && (
+          <div className="shrink-0 border-t border-white/10 bg-[#0f1e30] max-h-36 overflow-y-auto">
+            <div className="px-2 py-1.5 text-xs font-medium text-slate-400 border-b border-white/5 flex items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+              YAML errors
+            </div>
+            <ul className="p-1 list-none">
+              {editorErrors.map((err, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => goToLine(err.line, err.column)}
+                    className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-200 hover:bg-white/10 cursor-pointer focus:outline-none focus:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 font-mono"
+                  >
+                    <span className="text-red-400">Line {err.line}</span>
+                    {err.column > 1 && <span className="text-slate-500">:{err.column}</span>}
+                    {" "}{err.message}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>

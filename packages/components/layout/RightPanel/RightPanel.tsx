@@ -15,6 +15,7 @@ import EditorBody from "./EditorBody";
 import CommitDialog from "../../commit/CommitDialog";
 import EditorToolbar from "./EditorToolbar";
 import { usePipeline } from "../../workspace/PipelineProvider";
+import { Button } from "../../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,10 +104,10 @@ function EditorHeader({
   };
 
   return (
-    <div className="flex h-11 px-4 pr-4 pl-[30px] justify-between items-center self-stretch border-b border-white/10 ">
-      <div className="flex items-end flex-1 gap-1 h-full pb-[1px]">
+    <div className="flex h-11 px-4 pr-4 pl-8 justify-between items-center self-stretch border-b border-white/10 ">
+      <div className="flex items-end flex-1 gap-1 h-full pb-px">
         {(selectedFile || isEditing) && (
-          <div className="flex items-center gap-2 px-3 py-1.5 min-w-[180px] max-w-[300px] rounded-[4px_8px_0_0] bg-[#010819] shadow-[0_-2px_4px_0_rgba(0,0,0,1)] text-slate-200 text-sm border-t border-l border-r border-white/10 relative top-[1px] h-full">
+          <div className="flex items-center gap-2 px-3 py-1.5 min-w-44 max-w-72 rounded-tl rounded-tr-lg bg-[#010819] shadow-[0_-2px_4px_0_rgba(0,0,0,1)] text-slate-200 text-sm border-t border-l border-r border-white/10 relative top-px h-full">
             {selectedFile && (
               <span
                 className={`inline-block h-2 w-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.2)] ${isCurrentFileDraft ? "bg-amber-600 shadow-amber-600/50" : "bg-slate-500"}`}
@@ -146,7 +147,7 @@ function EditorHeader({
                   <>
                     {" "}
                     {provider !== "gitlab" && (
-                      <div className="w-[1px] h-3 bg-white/10 mx-1"></div>
+                      <div className="w-px h-3 bg-white/10 mx-1"></div>
                     )}{" "}
                     <Trash2
                       onClick={discardDraft}
@@ -163,17 +164,17 @@ function EditorHeader({
         <div className="flex items-center gap-1 pb-1">
           <button
             onClick={handleCreateNew}
-            className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-blue-300 transition-all text-slate-400"
+            className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-blue-300 transition-all text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
           >
             <Plus className="h-4 w-4" />
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none">
+            <DropdownMenuTrigger className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
               <FolderOpen className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="bg-[#0f1e50] border-white/20 text-white min-w-[240px]"
+              className="bg-[#0f1e50] border-white/20 text-white min-w-60"
             >
               {draftList.length > 0 && (
                 <>
@@ -185,10 +186,10 @@ function EditorHeader({
                     <DropdownMenuItem
                       key={f.fullPath}
                       onClick={() => setSelectedFile(f.fileName)}
-                      className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white"
+                      className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white"
                     >
                       <span className="text-amber-200">{f.fileName}</span>{" "}
-                      <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-300 px-1.5 rounded">
+                      <span className="ml-auto text-xs bg-amber-500/20 text-amber-300 px-1.5 rounded">
                         Draft
                       </span>
                     </DropdownMenuItem>
@@ -208,7 +209,7 @@ function EditorHeader({
                   <DropdownMenuItem
                     key={f.fullPath}
                     onClick={() => setSelectedFile(f.fileName)}
-                    className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white"
+                    className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white"
                   >
                     {f.fileName}
                   </DropdownMenuItem>
@@ -237,9 +238,14 @@ function EditorHeader({
 export default function RightPanel() {
   const [fontSize, setFontSize] = React.useState(13);
   const [isDiffMode, setIsDiffMode] = React.useState(false);
+  const [commitOpen, setCommitOpen] = React.useState(false);
+  const { selectedRepo, selectedFile, fileContent } = usePipeline();
+
+  const showCommitButton = !!selectedRepo?.full_name && !!selectedFile;
+  const commitDisabled = !fileContent?.trim();
 
   return (
-    <section className="flex flex-col flex-1 rounded-[16px] shadow-[2px_4px_8px_rgba(0,0,0,0.30)] bg-[#02184B] h-[595px] max-h-screen overflow-hidden relative z-0">
+    <section className="flex flex-col mr-6 flex-1 rounded-2xl shadow-[2px_4px_8px_rgba(0,0,0,0.30)] bg-[#02184B] h-[595px] max-h-screen overflow-hidden relative z-0">
       <EditorHeader
         zoom={fontSize}
         setZoom={setFontSize}
@@ -248,10 +254,22 @@ export default function RightPanel() {
       />
       <div className="flex-1 bg-[#010819] overflow-auto relative">
         <EditorBody fontSize={fontSize} isDiffMode={isDiffMode} />
+        {showCommitButton && (
+          <Button
+            onClick={() => setCommitOpen(true)}
+            disabled={commitDisabled}
+            title={
+              commitDisabled
+                ? "Select a repository and a file to commit"
+                : "Commit"
+            }
+            className="absolute bottom-4 right-4 z-10 h-9 rounded-lg bg-[#3b82f6] px-4 shadow-md hover:bg-[#2f6ad6] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+          >
+            Commit
+          </Button>
+        )}
       </div>
-      <div className="bg-[#010819] px-3 pb-3 pt-3 flex justify-end border-t border-white/5">
-        <CommitDialog />
-      </div>
+      <CommitDialog open={commitOpen} onOpenChange={setCommitOpen} />
     </section>
   );
 }

@@ -6,8 +6,8 @@ export default function SearchBar() {
   return (
     <div
       className="
-       w-[300px]  flex  h-8 shrink-0 items-center justify-end
-        rounded-[32px] border border-[rgba(180,202,253,0)]
+       w-72 flex h-8 shrink-0 items-center justify-end
+        rounded-full border border-[rgba(180,202,253,0)]
         bg-[#050b1a] overflow-hidden
       "
     >
@@ -17,11 +17,12 @@ export default function SearchBar() {
         className="
           flex-1 h-full bg-transparent px-3 text-sm text-white
           placeholder:text-white/50 outline-none
+          focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30 transition-colors
         "
       />
       <button
         type="submit"
-        className="flex h-full w-10 items-center justify-center bg-[#13307a]"
+        className="flex h-full w-10 items-center justify-center bg-[#13307a] hover:bg-[#1a4090] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-inset transition-colors"
       >
         <Search className="h-4 w-4 text-white/80" />
       </button>

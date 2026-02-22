@@ -153,11 +153,9 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
                         if (val === "|" || val === ">" || val === "") continue;
 
                         if (field && field.type === 'select' && field.options) {
-                          const isValid = field.options.some((opt) => opt.value === val);
-                          if (isValid) {
-                            matchedValue = val;
-                            break;
-                          }
+                          // Accept value even if not in options so editor edits sync to form
+                          matchedValue = val;
+                          break;
                         } else {
                           matchedValue = val;
                           break;
@@ -208,3 +206,26 @@ if (detected === 'github') {
     return { detectedSyntax: currentSyntax, newValues: {} };
   }
 };
+
+// =========================================================
+// 3. VALIDATE: YAML syntax errors for editor error list
+// =========================================================
+export interface YamlValidationError {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export function validateYaml(content: string): YamlValidationError[] {
+  if (!content || !content.trim()) return [];
+  try {
+    yaml.load(content);
+    return [];
+  } catch (e: unknown) {
+    const err = e as { mark?: { line?: number; column?: number }; message?: string; reason?: string };
+    const line = (err.mark?.line ?? 0) + 1;
+    const column = (err.mark?.column ?? 0) + 1;
+    const message = err.message || err.reason || "YAML syntax error";
+    return [{ line, column, message }];
+  }
+}

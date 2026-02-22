@@ -1,8 +1,10 @@
 // prisma/seed.ts
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+
+import { prisma } from "../packages/lib/auth";
+
 
 async function main() {
+  
   console.log("🧹 Clearing old data...");
   await prisma.pipelineComponent.deleteMany({});
   await prisma.componentCategory.deleteMany({});
@@ -209,6 +211,7 @@ stages:
               { label: "npm", value: "npm" },
               { label: "yarn", value: "yarn" },
               { label: "pnpm", value: "pnpm" },
+              { label: "bun", value: "bun" },
             ],
           },
           {
@@ -230,6 +233,8 @@ stages:
                 value: "pnpm install --frozen-lockfile",
               },
               { label: "PNPM (Standard)", value: "pnpm install" },
+              { label: "Bun (Frozen Lockfile)", value: "bun install --frozen-lockfile" },
+              { label: "Bun (Standard)", value: "bun install" },
             ],
           },
         ],
@@ -245,6 +250,8 @@ stages:
             npm install -g pnpm
           elif [ "{{pkg_manager}}" == "yarn" ]; then
             npm install -g yarn
+          elif [ "{{pkg_manager}}" == "bun" ]; then
+            npm install -g bun
           fi
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -263,6 +270,7 @@ stages:
   script:
     - if [ "{{pkg_manager}}" == "pnpm" ]; then npm install -g pnpm; fi
     - if [ "{{pkg_manager}}" == "yarn" ]; then npm install -g yarn; fi
+    - if [ "{{pkg_manager}}" == "bun" ]; then npm install -g bun; fi
     - {{install_cmd}}`,
           },
         ],

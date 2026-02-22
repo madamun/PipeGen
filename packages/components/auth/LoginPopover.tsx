@@ -16,8 +16,8 @@ function SignInCard() {
   return (
     <div
       className="
-        inline-flex h-[167px] p-2 flex-col items-start gap-2
-        rounded-[8px] border border-[#B4CAFD]
+        inline-flex h-40 p-2 flex-col items-start gap-2
+        rounded-lg border border-[#B4CAFD]
         bg-[linear-gradient(0deg,rgba(0,0,0,0.2)0%,rgba(0,0,0,0.2)100%),radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]
       "
     >

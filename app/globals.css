@@ -8,7 +8,7 @@
 
 
 
-html, body, :root { height: max-content; }
+html, body, :root { height: 100dvh; overflow: hidden; }
 body { background: linear-gradient(180deg, #010819 0%, rgba(2, 24, 75, 0.85) 100% ) }
 
 @theme inline {

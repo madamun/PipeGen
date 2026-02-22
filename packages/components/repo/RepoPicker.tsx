@@ -43,7 +43,7 @@ type Repo = {
   } | null;
 };
 
-export default function RepoPicker() {
+export default function RepoPicker(props: { children?: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
@@ -99,12 +99,14 @@ export default function RepoPicker() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          className="ml-1 inline-flex h-8 items-center gap-1 rounded-md px-2 text-slate-200 hover:bg-white/10"
-          aria-label="Change repository"
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+        {props.children ?? (
+          <button
+            className="ml-1 inline-flex h-8 min-h-9 items-center gap-1.5 rounded-md px-2 py-2 text-slate-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
+            aria-label="Change repository"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        )}
       </DialogTrigger>
 
       <DialogContent
@@ -201,14 +203,22 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
 
   return (
     <div
-      onClick={onPick}
       role="button"
+      tabIndex={0}
+      onClick={onPick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPick();
+        }
+      }}
       className="cursor-pointer select-none
-                 flex h-[220px] flex-col justify-between
+                 flex h-56 flex-col justify-between
                  rounded-2xl border border-white/10
                  bg-[linear-gradient(0deg,rgba(0,0,0,0.20)0%,rgba(0,0,0,0.20)100%),radial-gradient(121.01%_173%_at_50%_173%,#2146ba_0%,#0d2b79_40.15%,#061845_100%)]
                  p-4 shadow-lg transition-all duration-200
-                 hover:scale-[1.02] hover:bg-[radial-gradient(121.01%_173%_at_50%_173%,#3b6efb_0%,#173bab_40.15%,#0a1e4d_100%)]"
+                 hover:scale-[1.02] hover:bg-[radial-gradient(121.01%_173%_at_50%_173%,#3b6efb_0%,#173bab_40.15%,#0a1e4d_100%)]
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
     >
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -217,24 +227,24 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
           </div>
           <div className="shrink-0">
             {repo.private ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-1 text-[10px] text-white/90 border border-white/10">
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/30 px-2 py-1 text-xs text-white/90 border border-white/10">
                 <LockKeyhole className="h-3 w-3" /> Private
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] text-emerald-200 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1 text-xs text-emerald-200 border border-emerald-500/30">
                 <Globe className="h-3 w-3" /> Public
               </span>
             )}
           </div>
         </div>
-        <p className="text-xs text-white/70 line-clamp-2 h-[32px] mb-2 leading-relaxed">
+        <p className="text-xs text-white/70 line-clamp-2 h-8 mb-2 leading-relaxed">
           {repo.description || "No description provided."}
         </p>
       </div>
 
       {/* Badges Area */}
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           {/* 🎯 Pipeline: 
               - ถ้าเป็น GitHub: โชว์เสมอ (แม้เป็น 0)
               - ถ้าเป็น GitLab: โชว์เฉพาะตอน > 0
@@ -273,7 +283,7 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
             pipelineCount === 0 &&
             branchCount === 0 &&
             repo.stargazers_count === 0 && (
-              <Badge className="opacity-70 font-semibold uppercase tracking-wider text-[9px]">
+              <Badge className="opacity-70 font-semibold uppercase tracking-wider text-xs">
                 {repo.provider || "Git"}
               </Badge>
             )}
@@ -285,7 +295,7 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
             {languages.map((lang) => (
               <span
                 key={lang}
-                className="rounded-md bg-white/10 px-2 py-[2px] text-[10px] text-white/80"
+                className="rounded-md bg-white/10 px-2 py-0.5 text-xs text-white/80"
               >
                 {lang}
               </span>
@@ -323,7 +333,7 @@ function GridSkeleton() {
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}
-          className="h-[220px] animate-pulse rounded-2xl bg-white/5 border border-white/5"
+          className="h-56 animate-pulse rounded-2xl bg-white/5 border border-white/5"
         />
       ))}
     </div>
