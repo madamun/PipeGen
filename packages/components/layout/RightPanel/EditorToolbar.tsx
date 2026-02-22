@@ -104,20 +104,20 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={() => handleZoom("out")}
-                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10 outline-none"
+                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
             >
               Zoom Out
             </TooltipContent>
           </Tooltip>
 
-          <span className="w-[50px] text-center text-xs font-mono text-slate-200 select-none cursor-default">
+          <span className="w-12 text-center text-xs font-mono text-slate-200 select-none cursor-default">
             {currentPercent}%
           </span>
 
@@ -125,14 +125,14 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={() => handleZoom("in")}
-                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10 outline-none"
+                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
             >
               Zoom In
             </TooltipContent>
@@ -146,7 +146,7 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={() => setIsDiffMode(!isDiffMode)}
-                className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
+                className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819] ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
               >
                 {isDiffMode ? (
                   <FileCode className="w-4 h-4" />
@@ -160,7 +160,7 @@ export default function EditorToolbar({
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
             >
               {isDiffMode ? "Switch to Editor Mode" : "View Code Differences"}
             </TooltipContent>
@@ -171,7 +171,7 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={handleCopy}
-                className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10 outline-none"
+                className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 {copied ? (
                   <Check className="w-4 h-4 text-emerald-400" />
@@ -182,7 +182,7 @@ export default function EditorToolbar({
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
             >
               {copied ? "Copied to clipboard!" : "Copy Code"}
             </TooltipContent>
@@ -192,20 +192,20 @@ export default function EditorToolbar({
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none">
+                <DropdownMenuTrigger className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
                   <Share className="w-4 h-4" />
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent
                 side="top"
-                className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+                className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
               >
                 Export Options
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent
               align="end"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-[10px] px-2 py-1 leading-none font-medium tracking-wide"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
             >
               <DropdownMenuLabel className="text-xs text-slate-400">
                 Export As...
@@ -213,14 +213,14 @@ export default function EditorToolbar({
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem
                 onClick={handleDownloadYml}
-                className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs"
+                className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white gap-2 text-xs"
               >
                 <Download className="w-3.5 h-3.5 text-blue-400" />
                 <span>Download YAML</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handlePrintPdf}
-                className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white gap-2 text-xs"
+                className="cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white gap-2 text-xs"
               >
                 <Printer className="w-3.5 h-3.5 text-red-400" />
                 <span>Print / Save PDF</span>

@@ -61,12 +61,12 @@ export default function SetupSection({
     setLanguage,
   } = usePipeline();
 
-  const toggleCategory = (id: string) => {
-    setCategoriesOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleCategory = (id: string, currentOpen: boolean) => {
+    setCategoriesOpen((prev) => ({ ...prev, [id]: !currentOpen }));
   };
 
-  const toggleSection = (key: string) => {
-    setSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleSection = (key: string, currentOpen: boolean) => {
+    setSectionsOpen((prev) => ({ ...prev, [key]: !currentOpen }));
   };
 
   if (categories.length === 0)
@@ -101,7 +101,7 @@ export default function SetupSection({
   }
 
   return (
-    <div className="w-full max-w-[680px] space-y-4 px-1 pb-10">
+    <div className="w-full max-w-2xl space-y-4 px-1 pb-10">
       {categories.map((cat) => {
         const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
         const isCatOpen = categoriesOpen[cat.id] ?? false;
@@ -111,11 +111,12 @@ export default function SetupSection({
             {/* HEADER Category */}
             <button
               type="button"
-              onClick={() => toggleCategory(cat.id)}
+              onClick={() => toggleCategory(cat.id, isCatOpen)}
               className="
-                relative w-full overflow-hidden rounded-[16px]
+                relative w-full overflow-hidden rounded-2xl
                 bg-[linear-gradient(0deg,rgba(0,0,0,0.2)0%,rgba(0,0,0,0.2)100%),radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]
                 border border-white/10 shadow-lg px-5 py-2 flex items-center justify-center z-10
+                hover:brightness-110 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent
               "
             >
               <div className="absolute left-5 top-1/2 -translate-y-1/2">
@@ -136,7 +137,7 @@ export default function SetupSection({
               className={`grid transition-[grid-template-rows] duration-300 ${isCatOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
             >
               <div className="overflow-hidden">
-                <div className="w-full rounded-[16px] border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.35)] p-4 space-y-1">
+                <div className="w-full rounded-2xl border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.35)] p-4 space-y-1">
                   {/* Platform Selection */}
                   {cat.slug === "general" && (
                     <div className="mb-4">
@@ -171,7 +172,7 @@ export default function SetupSection({
                         className="mt-2 border-t border-white/5 pt-2 first:border-0 first:pt-0"
                       >
                         <button
-                          onClick={() => toggleSection(comp.name.toLowerCase())}
+                          onClick={() => toggleSection(comp.name.toLowerCase(), isOpen)}
                           className="flex items-center gap-2 w-full py-2 hover:bg-white/5 rounded px-2 transition-colors group"
                         >
                           {isOpen ? (
@@ -212,7 +213,7 @@ export default function SetupSection({
                                   />
                                   <label
                                     htmlFor={field.id}
-                                    className="text-[14px] text-slate-200 cursor-pointer select-none hover:text-white transition-colors font-medium"
+                                    className="text-sm text-slate-200 cursor-pointer select-none hover:text-white transition-colors font-medium"
                                   >
                                     {field.label}
                                   </label>
@@ -302,11 +303,11 @@ export default function SetupSection({
                                   className="py-2 ml-1 bg-[#010819]/20 p-3 rounded-lg border border-white/5"
                                 >
                                   <div className="flex justify-between items-center mb-2">
-                                    <label className="text-[10px] text-blue-300 uppercase tracking-wider font-bold">
+                                    <label className="text-xs text-blue-300 uppercase tracking-wider font-bold">
                                       {field.label}
                                     </label>
                                     {availableBranches.length === 0 && (
-                                      <span className="text-[10px] text-yellow-500">
+                                      <span className="text-xs text-yellow-500">
                                         Waiting for branches...
                                       </span>
                                     )}
