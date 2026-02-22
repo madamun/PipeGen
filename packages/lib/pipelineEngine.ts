@@ -153,11 +153,9 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
                         if (val === "|" || val === ">" || val === "") continue;
 
                         if (field && field.type === 'select' && field.options) {
-                          const isValid = field.options.some((opt) => opt.value === val);
-                          if (isValid) {
-                            matchedValue = val;
-                            break;
-                          }
+                          // Accept value even if not in options so editor edits sync to form
+                          matchedValue = val;
+                          break;
                         } else {
                           matchedValue = val;
                           break;
