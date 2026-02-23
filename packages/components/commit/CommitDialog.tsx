@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,6 @@ import { usePipeline } from "../workspace/PipelineProvider";
 import { GitBranch, GitPullRequest, UploadCloud, Sparkles } from "lucide-react";
 
 type Mode = "pull_request" | "push";
-type Branch = { name: string; protected?: boolean };
 
 type Props = { open?: boolean; onOpenChange?: (v: boolean) => void };
 
@@ -44,12 +44,9 @@ export default function CommitDialog(props: Props) {
   const [mode, setMode] = React.useState<Mode>("push");
 
   const [branch, setBranch] = React.useState<string>("main");
-  const [branches, setBranches] = React.useState<Branch[]>([]);
-  const [loadingBranches, setLoadingBranches] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [step, setStep] = React.useState<"form" | "preview">("form");
 
-  // คำนวณ Path ตามค่าย
   const targetPath = React.useMemo(() => {
     const fileName =
       selectedFile ||
@@ -63,73 +60,42 @@ export default function CommitDialog(props: Props) {
     }
   }, [selectedFile, provider]);
 
+  const { data: branchNames = [], isLoading: loadingBranches } = useQuery({
+    queryKey: ["branches", selectedRepo?.full_name, provider],
+    queryFn: async () => {
+      if (!selectedRepo?.full_name) return [];
+      const endpoint =
+        provider === "gitlab"
+          ? `/api/gitlab/branches`
+          : `/api/github/branches`;
+      const res = await fetch(
+        `${endpoint}?full_name=${encodeURIComponent(selectedRepo.full_name)}`,
+        { cache: "no-store", credentials: "include" },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load branches");
+      return (data.branches || []).map((b: { name: string }) => b.name) as string[];
+    },
+    enabled: open && !!selectedRepo?.full_name,
+  });
+
   React.useEffect(() => {
     if (!open) return;
-
-    // ตั้งค่า branch เริ่มต้น
     setBranch(selectedBranch || selectedRepo?.default_branch || "main");
+  }, [open, selectedBranch, selectedRepo?.default_branch]);
 
-    if (!selectedRepo?.full_name) {
-      setBranches([]);
-      return;
+  React.useEffect(() => {
+    if (!open || !branchNames.length) return;
+    if (!branchNames.includes(selectedBranch || "")) {
+      const pref =
+        (selectedRepo?.default_branch &&
+          branchNames.includes(selectedRepo.default_branch) &&
+          selectedRepo.default_branch) ||
+        (branchNames.includes("main") ? "main" : branchNames[0] || "main");
+      setBranch(pref);
     }
+  }, [open, branchNames, selectedBranch, selectedRepo?.default_branch]);
 
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoadingBranches(true);
-
-        // ✅ FIX 1: เลือก API Endpoint ตาม Provider
-        const endpoint =
-          provider === "gitlab"
-            ? `/api/gitlab/branches`
-            : `/api/github/branches`;
-
-        const res = await fetch(
-          `${endpoint}?full_name=${encodeURIComponent(selectedRepo.full_name)}`,
-          { cache: "no-store" },
-        );
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Failed to load branches");
-        if (cancelled) return;
-
-        const list: Branch[] = data.branches || [];
-        setBranches(list);
-
-        // Auto-select branch logic
-        const names = list.map((b) => b.name);
-        if (!names.includes(selectedBranch || "")) {
-          const pref =
-            (selectedRepo?.default_branch &&
-              names.includes(selectedRepo.default_branch) &&
-              selectedRepo.default_branch) ||
-            (names.includes("main") ? "main" : names[0] || "main");
-          setBranch(pref);
-        }
-      } catch (e) {
-        console.error("load branches:", e);
-        if (!cancelled) setBranches([]);
-      } finally {
-        if (!cancelled) setLoadingBranches(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    open,
-    selectedRepo?.full_name,
-    selectedRepo?.default_branch,
-    selectedBranch,
-    provider, // dependency
-  ]);
-
-  const branchNames = React.useMemo(
-    () => branches.map((b) => b.name),
-    [branches],
-  );
   const selectValue = branchNames.includes(branch) ? branch : undefined;
 
   const disabled = !selectedRepo?.full_name || !fileContent?.trim();
@@ -173,6 +139,7 @@ export default function CommitDialog(props: Props) {
 
       const res = await fetch(endpoint, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           full_name: selectedRepo!.full_name, // GitLab ต้องการ namespace/project
@@ -257,7 +224,7 @@ export default function CommitDialog(props: Props) {
             <Select
               value={selectValue}
               onValueChange={setBranch}
-              disabled={loadingBranches || branches.length === 0}
+              disabled={loadingBranches || branchNames.length === 0}
             >
               <SelectTrigger aria-label="Choose branch" className="bg-black/30 border-white/10 min-w-28">
                 <SelectValue
@@ -267,10 +234,9 @@ export default function CommitDialog(props: Props) {
                 />
               </SelectTrigger>
               <SelectContent className="bg-[#0f1e50] text-white border border-white/20">
-                {branches.map((b) => (
-                  <SelectItem key={b.name} value={b.name}>
-                    {b.name}
-                    {b.protected ? " (protected)" : ""}
+                {branchNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
                   </SelectItem>
                 ))}
               </SelectContent>

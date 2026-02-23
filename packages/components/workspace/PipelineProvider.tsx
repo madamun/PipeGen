@@ -11,7 +11,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-// ✅ Import Types และ Engine เข้ามาใช้งาน
+import { useQuery } from "@tanstack/react-query";
 import {
   Repo,
   PipelineFile,
@@ -38,8 +38,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   );
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState("main");
-  const [availableRepos, setAvailableRepos] = useState<Repo[]>([]);
-  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [fileContent, setFileContent] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [originalContent, setOriginalContent] = useState("");
@@ -49,92 +47,108 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<ComponentCategory[]>([]);
   const [componentValues, setComponentValues] = useState<ComponentValues>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingOther, setIsLoadingOther] = useState(false);
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
   const lastSavedContent = useRef<string | null>(null);
   const skipLoadOnce = useRef(false);
 
-  // --- Init ---
+  // --- Init: components ---
+  const { data: categoriesData } = useQuery({
+    queryKey: ["components"],
+    queryFn: async () => {
+      const res = await fetch("/api/components", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch components");
+      return res.json() as Promise<ComponentCategory[]>;
+    },
+  });
   useEffect(() => {
-    const init = async () => {
-      try {
-        fetch("/api/components")
-          .then((res) => res.json())
-          .then(setCategories)
-          .catch(console.error);
-        const res = await fetch("/api/auth/providers");
-        const data = await res.json();
-        const myProviders = data.providers || [];
-        if (myProviders.includes("github")) {
-          setRepoProvider("github");
-          setSyntaxProvider("github");
-        } else if (myProviders.includes("gitlab")) {
-          setRepoProvider("gitlab");
-          setSyntaxProvider("gitlab");
-        }
-      } catch (e) {
-        console.error("Init failed", e);
-      }
-    };
-    init();
-  }, []);
+    if (categoriesData) setCategories(categoriesData);
+  }, [categoriesData]);
 
-  // --- Fetch Repos & Branches ---
-  const fetchRepos = useCallback(async () => {
-    if (!repoProvider) return;
-    setIsLoading(true);
-    try {
+  // --- Auth providers ---
+  const { data: authProvidersData } = useQuery({
+    queryKey: ["auth-providers"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/providers", { credentials: "include" });
+      const data = await res.json();
+      return (data.providers || []) as string[];
+    },
+  });
+  useEffect(() => {
+    if (!authProvidersData) return;
+    if (authProvidersData.includes("github")) {
+      setRepoProvider("github");
+      setSyntaxProvider("github");
+    } else if (authProvidersData.includes("gitlab")) {
+      setRepoProvider("gitlab");
+      setSyntaxProvider("gitlab");
+    }
+  }, [authProvidersData]);
+
+  // --- Repos ---
+  const {
+    data: reposResponse,
+    isLoading: isLoadingRepos,
+    refetch: refetchRepos,
+  } = useQuery({
+    queryKey: ["repos", repoProvider],
+    queryFn: async () => {
+      if (!repoProvider) return { repos: [] as Repo[] };
       const endpoint =
         repoProvider === "gitlab" ? `/api/gitlab/repos` : `/api/github/repos`;
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { credentials: "include" });
       const data = await res.json();
-      setAvailableRepos(data.repos || []);
-    } catch (error) {
-      setAvailableRepos([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [repoProvider]);
+      return { me: data.me, repos: (data.repos || []) as Repo[] };
+    },
+    enabled: !!repoProvider,
+  });
+  const availableRepos = reposResponse?.repos ?? [];
+  const fetchRepos = useCallback(
+    () => refetchRepos().then(() => undefined),
+    [refetchRepos],
+  );
 
-  useEffect(() => {
-    fetchRepos();
-  }, [fetchRepos]);
-
-  const fetchBranches = useCallback(
-    async (repoFullName: string) => {
-      if (!repoFullName || !repoProvider) return;
+  // --- Branches ---
+  const {
+    data: availableBranchesData = [],
+    isLoading: isLoadingBranches,
+    refetch: refetchBranches,
+  } = useQuery({
+    queryKey: ["branches", selectedRepo?.full_name, repoProvider],
+    queryFn: async () => {
+      if (!selectedRepo?.full_name || !repoProvider) return [];
       const endpoint =
         repoProvider === "gitlab"
           ? `/api/gitlab/branches`
           : `/api/github/branches`;
-      try {
-        const res = await fetch(
-          `${endpoint}?full_name=${encodeURIComponent(repoFullName)}`,
-        );
-        const data = await res.json();
-        setAvailableBranches(
-          data.branches
-            ? data.branches.map((b: { name: string }) => b.name)
-            : [],
-        );
-      } catch (error) {
-        setAvailableBranches([]);
-      }
+      const res = await fetch(
+        `${endpoint}?full_name=${encodeURIComponent(selectedRepo.full_name)}`,
+        { credentials: "include" },
+      );
+      const data = await res.json();
+      return (data.branches || []).map((b: { name: string }) => b.name) as string[];
     },
-    [repoProvider],
+    enabled: !!selectedRepo?.full_name && !!repoProvider,
+  });
+  const availableBranches = availableBranchesData;
+  const fetchBranches = useCallback(
+    (_repoFullName: string) => refetchBranches().then(() => undefined),
+    [refetchBranches],
   );
+
+  const isLoading =
+    isLoadingRepos || isLoadingBranches || isLoadingOther;
 
   useEffect(() => {
     if (selectedRepo) {
       if (selectedRepo.default_branch)
         setSelectedBranch(selectedRepo.default_branch);
-      fetchBranches(selectedRepo.full_name);
       if (selectedRepo.provider)
         setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
     }
-  }, [selectedRepo, fetchBranches]);
+  }, [selectedRepo]);
 
   const getFullFilePath = (fileName: string) =>
     selectedRepo?.provider === "gitlab"
@@ -168,16 +182,18 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     let finalValue = value;
     let nextValues = { ...componentValues };
 
+    const pushBranches = componentValues["push_branches"];
+    const prBranches = componentValues["pr_branches"];
     if (
       id === "enable_push" &&
       value === true &&
-      !componentValues["push_branches"]?.length
+      !(Array.isArray(pushBranches) && pushBranches.length > 0)
     )
       nextValues["push_branches"] = [defaultBranch];
     if (
       id === "enable_pr" &&
       value === true &&
-      !componentValues["pr_branches"]?.length
+      !(Array.isArray(prBranches) && prBranches.length > 0)
     )
       nextValues["pr_branches"] = [defaultBranch];
     if (
@@ -232,10 +248,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   // --- File Ops ---
   const refreshFileList = useCallback(async () => {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
-    setIsLoading(true);
+    setIsLoadingOther(true);
     try {
       await fetch("/api/pipeline/sync", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
@@ -245,6 +262,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       });
       const res = await fetch(
         `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}`,
+        { credentials: "include" },
       );
       const data = await res.json();
       setDraftList(data.drafts || []);
@@ -253,7 +271,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error(e);
     } finally {
-      setIsLoading(false);
+      setIsLoadingOther(false);
     }
   }, [selectedRepo, selectedBranch, repoProvider]);
 
@@ -288,12 +306,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           branch: selectedBranch,
           filePath: path,
         });
-        const resGit = await fetch(`/api/pipeline/read?${params.toString()}`);
+        const resGit = await fetch(`/api/pipeline/read?${params.toString()}`, {
+          credentials: "include",
+        });
         const dataGit = await resGit.json();
         setOriginalContent(dataGit.content || "");
 
         const resDraft = await fetch(
           `/api/pipeline/draft?${params.toString()}`,
+          { credentials: "include" },
         );
         const dataDraft = await resDraft.json();
 
@@ -331,6 +352,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         setIsSaving(true);
         await fetch("/api/pipeline/draft", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repoFullName: selectedRepo.full_name,
@@ -379,6 +401,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setIsSaving(true);
       const res = await fetch("/api/pipeline/commit", {
         method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
           filePath: getFullFilePath(selectedFile),
@@ -406,6 +430,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setIsSaving(true);
       const res = await fetch("/api/pipeline/draft", {
         method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
           filePath: getFullFilePath(selectedFile),
@@ -427,10 +453,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const autoSetup = async () => {
     if (!selectedRepo || !repoProvider) return;
-    setIsLoading(true);
+    setIsLoadingOther(true);
     try {
       const res = await fetch("/api/pipeline/analyze", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -471,7 +498,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       alert("❌ Auto setup failed. Please configure manually.");
     } finally {
-      setIsLoading(false);
+      setIsLoadingOther(false);
     }
   };
 

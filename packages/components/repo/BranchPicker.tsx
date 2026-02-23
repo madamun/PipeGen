@@ -44,6 +44,7 @@ export default function BranchPicker() {
 
         await fetch("/api/pipeline/sync", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repoFullName: selectedRepo.full_name,
