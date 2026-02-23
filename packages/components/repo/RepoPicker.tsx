@@ -54,10 +54,28 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
   const [repos, setRepos] = React.useState<Repo[]>([]);
 
   const { provider, setSelectedRepo, setSelectedBranch } = usePipeline();
-
-  async function loadRepos() {
+  async function loadRepos(forceRefresh = false) {
     setLoading(true);
     try {
+      const cacheKey = `pipegen_repos_cache_${provider}`;
+      const CACHE_TTL = 20 * 60 * 1000; // 20 นาที 
+
+      if (!forceRefresh) {
+        const cachedString = sessionStorage.getItem(cacheKey);
+        if (cachedString) {
+          const cachedData = JSON.parse(cachedString);
+          const now = Date.now();
+
+          if (now - cachedData.timestamp < CACHE_TTL) {
+            setMe(cachedData.me);
+            setRepos(cachedData.repos);
+            setLoading(false);
+            return; 
+          }
+        }
+      }
+
+      // 2. ดึงข้อมูลใหม่จาก API
       const endpoint =
         provider === "gitlab" ? "/api/gitlab/repos" : "/api/github/repos";
 
@@ -68,9 +86,18 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
 
       setMe(data.me);
       setRepos(data.repos as Repo[]);
+
+      // 3. เซฟข้อมูล พร้อม "แสตมป์เวลาปัจจุบัน" 
+      const dataToCache = {
+        me: data.me,
+        repos: data.repos,
+        timestamp: Date.now(), 
+      };
+      sessionStorage.setItem(cacheKey, JSON.stringify(dataToCache));
+
     } catch (e) {
       console.error("Load repo error:", e);
-      setRepos([]);
+      if (!repos.length) setRepos([]);
     } finally {
       setLoading(false);
     }
@@ -139,7 +166,8 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
               size="sm"
               variant="secondary"
               className="bg-white/20 hover:bg-white/30 text-white border-none"
-              onClick={loadRepos}
+              // 🔥 4. ปรับ onClick ให้ส่งค่า true ไป เพื่อสั่งบังคับดึง API ใหม่
+              onClick={() => loadRepos(true)}
               disabled={loading}
             >
               <RefreshCw

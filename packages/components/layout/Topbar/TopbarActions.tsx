@@ -30,13 +30,6 @@ export default function TopbarActions() {
         )}
       </Button>
 
-      {/* <Button
-        onClick={handleSecurityScan}
-        className="h-9 rounded-xl bg-[#07003f] text-white hover:bg-zinc-700"
-      >
-        <Shield className="mr-2 h-4 w-4" />
-        Security Scan
-      </Button> */}
     </div>
   );
 }
