@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+// 🔥 เพิ่ม usePathname เข้ามาในบรรทัดนี้ครับ
+import { useRouter, usePathname } from "next/navigation"; 
 import { Search as SearchIcon } from "lucide-react";
 import Gitconnect from "./Gitconnect";
 
@@ -46,7 +47,6 @@ export function SearchBar() {
           // ถ้ากำลังพิมพ์ในช่องพิมพ์อื่นๆ อยู่ ให้ Return ออกไปเลย (ไม่ต้องทำอะไร)
           return;
         }
-        // 🔥🔥🔥 สิ้นสุดส่วนที่เพิ่ม 🔥🔥🔥
 
         e.preventDefault();
         inputRef.current?.focus();
@@ -79,8 +79,17 @@ export function SearchBar() {
     </div>
   );
 }
+
 // --- Component หลัก: Navbar ---
 export default function Navbar() {
+  // 🔥 1. เรียกใช้งาน usePathname เพื่อดูว่าตอนนี้อยู่หน้าไหน
+  const pathname = usePathname();
+
+  // 🔥 2. ถ้าอยู่หน้า /login ให้ return null (แปลว่าไม่ต้องเรนเดอร์ Navbar ตัวนี้ออกมา)
+  if (pathname === "/login") {
+    return null;
+  }
+
   return (
     <nav
       className="
