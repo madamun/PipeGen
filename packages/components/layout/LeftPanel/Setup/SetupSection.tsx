@@ -298,7 +298,8 @@ export default function SetupSection({
 
                             // Branch Select
                             if (field.type === "branch_select") {
-                              const currentVal = componentValues[field.id] || [];
+                              const raw = componentValues[field.id];
+                              const currentVal: string[] = Array.isArray(raw) ? raw : [];
                               return (
                                 <div
                                   key={field.id}

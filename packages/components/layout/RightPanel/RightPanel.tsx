@@ -152,7 +152,7 @@ function EditorHeader({
                     <Trash2
                       onClick={discardDraft}
                       className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
-                      title="Discard changes"
+                      // title="Discard changes"
                     />{" "}
                   </>
                 )}{" "}

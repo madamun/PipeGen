@@ -51,8 +51,10 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
     if (allContext['enable_pr']) triggerBlock += `  pull_request:\n    branches: ${JSON.stringify(allContext['pr_branches'] || ['main'])}\n`;
     if (!triggerBlock) triggerBlock = "  workflow_dispatch:";
   } else {
-    if (allContext['enable_push']) (allContext['push_branches'] || ['main']).forEach((b: string) => triggerBlock += `    - if: $CI_COMMIT_BRANCH == "${b}"\n`);
-    if (allContext['enable_pr']) (allContext['pr_branches'] || ['main']).forEach((b: string) => triggerBlock += `    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"\n`);
+    const pushBranches: string[] = Array.isArray(allContext['push_branches']) ? allContext['push_branches'] : ['main'];
+    const prBranches: string[] = Array.isArray(allContext['pr_branches']) ? allContext['pr_branches'] : ['main'];
+    if (allContext['enable_push']) pushBranches.forEach((b) => triggerBlock += `    - if: $CI_COMMIT_BRANCH == "${b}"\n`);
+    if (allContext['enable_pr']) prBranches.forEach((b) => triggerBlock += `    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"\n`);
     if (!triggerBlock) triggerBlock = "    - when: manual";
   }
 
@@ -71,7 +73,10 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
       if (isActive && comp.syntaxes) {
         const syntax = comp.syntaxes.find((s) => s.platform === targetSyntax);
         if (syntax && syntax.template) {
-          let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => allContext[variableName] !== undefined ? allContext[variableName] : match);
+          let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => {
+            const val = allContext[variableName];
+            return val !== undefined ? String(val) : match;
+          });
           targetSyntax === 'github' ? stepsCode += "\n" + template : jobsCode += "\n" + template;
         }
       }

@@ -3,7 +3,7 @@
  * Used by POST /api/pipeline/analyze.
  */
 
-import type { ComponentValues } from "@/packages/types/pipeline";
+import type { ComponentValues } from "../types/pipeline";
 
 export interface AnalyzeRepoParams {
   repoFullName: string;

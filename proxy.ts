@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // ฟังก์ชันหลักของยามเฝ้าประตู
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. ปล่อยผ่าน (Whitelist): ถ้าเป็นหน้า Login หรือพวกไฟล์ระบบ/API ไม่ต้องตรวจ

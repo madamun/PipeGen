@@ -21,6 +21,7 @@ export default function SearchBar() {
         "
       />
       <button
+        title="Search"
         type="submit"
         className="flex h-full w-10 items-center justify-center bg-[#13307a] hover:bg-[#1a4090] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-inset transition-colors"
       >
