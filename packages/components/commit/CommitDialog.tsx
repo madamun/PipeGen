@@ -259,7 +259,7 @@ export default function CommitDialog(props: Props) {
               onValueChange={setBranch}
               disabled={loadingBranches || branches.length === 0}
             >
-              <SelectTrigger className="bg-black/30 border-white/10 min-w-28">
+              <SelectTrigger aria-label="Choose branch" className="bg-black/30 border-white/10 min-w-28">
                 <SelectValue
                   placeholder={
                     loadingBranches ? "Loading branches..." : "Select a branch"

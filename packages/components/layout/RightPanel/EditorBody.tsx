@@ -125,7 +125,7 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
 
   if (!selectedFile) {
     return (
-      <div className="h-full w-full bg-[#1e1e1e] flex flex-col items-center justify-center text-slate-500 select-none">
+      <div className="h-full w-full bg-[#010819] flex flex-col items-center justify-center text-slate-500 select-none">
         <div className="text-4xl mb-4 opacity-30 grayscale">🚀</div>
         <p className="text-sm font-medium">No file selected</p>
       </div>
@@ -133,7 +133,7 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
   }
 
   const LoadingOverlay = () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e] z-20">
+    <div className="absolute inset-0 flex items-center justify-center bg-[#010819] z-20">
       <div className="flex flex-col items-center gap-2">
         <Loader2 className="animate-spin text-blue-500 h-6 w-6" />
         <span className="text-xs text-slate-500">Loading Editor...</span>

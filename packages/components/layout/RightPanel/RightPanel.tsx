@@ -164,12 +164,13 @@ function EditorHeader({
         <div className="flex items-center gap-1 pb-1">
           <button
             onClick={handleCreateNew}
+            aria-label="Create new file"
             className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-blue-300 transition-all text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
           >
             <Plus className="h-4 w-4" />
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
+            <DropdownMenuTrigger aria-label="Open file list" className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
               <FolderOpen className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent

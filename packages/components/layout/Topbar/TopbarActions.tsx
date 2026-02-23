@@ -13,7 +13,7 @@ export default function TopbarActions() {
       <Button
         onClick={autoSetup}
         disabled={isLoading} // 🔒 ปิดปุ่มตอนกำลังสแกน กันคนกดซ้ำ
-        className="h-9 rounded-xl bg-[#07003f] text-white hover:bg-zinc-700 transition-all"
+        className="h-9 rounded-xl bg-[#07003f] text-white hover:bg-[#0a0050] transition-all"
       >
         {isLoading ? (
           <>
@@ -32,7 +32,7 @@ export default function TopbarActions() {
 
       {/* <Button
         onClick={handleSecurityScan}
-        className="h-9 rounded-xl bg-[#07003f] text-white hover:bg-zinc-700"
+        className="h-9 rounded-xl bg-[#3b82f6] text-white hover:bg-[#2f6ad6]"
       >
         <Shield className="mr-2 h-4 w-4" />
         Security Scan

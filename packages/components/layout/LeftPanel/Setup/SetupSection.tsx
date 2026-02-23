@@ -259,11 +259,13 @@ export default function SetupSection({
                                   key={field.id}
                                   className="flex flex-col gap-1.5 py-1 ml-1"
                                 >
-                                  <label className="text-xs text-slate-400 font-medium">
+                                  <label htmlFor={`setup-select-${field.id}`} className="text-xs text-slate-400 font-medium">
                                     {field.label}
                                   </label>
                                   <div className="relative">
                                     <select
+                                      id={`setup-select-${field.id}`}
+                                      title={field.label}
                                       value={
                                         componentValues[field.id] !== undefined
                                           ? componentValues[field.id]
