@@ -15,6 +15,7 @@ import {
   Box,
   FileCode,
   ShieldCheck,
+  Bell,
 } from "lucide-react";
 import { Switch } from "../../../ui/switch";
 import { usePipeline } from "../../../workspace/PipelineProvider";
@@ -28,6 +29,7 @@ const IconMap: Record<string, any> = {
   Box: Box,
   FileCode: FileCode,
   ShieldCheck: ShieldCheck,
+  Bell: Bell,
   Default: Box,
 };
 

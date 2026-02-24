@@ -93,6 +93,20 @@ async function main() {
                 '    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == {{value}}',
             },
           },
+          {
+            id: "enable_schedule",
+            label: "Run on Schedule (Cron)",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "cron_expression",
+            label: "Cron Expression",
+            type: "input",
+            defaultValue: "0 * * * *",
+            visibleIf: { fieldId: "enable_schedule", value: true },
+            placeholder: "0 * * * * (every hour)",
+          },
         ],
       },
       syntaxes: {
@@ -317,6 +331,57 @@ stages:
             platform: "gitlab",
             template:
               "setup_python:\n  stage: setup\n  image: python:{{py_version}}\n  script:\n    - pip install -r requirements.txt",
+          },
+        ],
+      },
+    },
+  });
+
+  // Dependency Cache (GitHub: actions/cache; GitLab: cache in default workflow)
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Dependency Cache",
+      type: "group",
+      uiConfig: {
+        fields: [
+          {
+            id: "enable_cache",
+            label: "Enable dependency cache",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "cache_path",
+            label: "Cache path",
+            type: "input",
+            defaultValue: "node_modules",
+            visibleIf: { fieldId: "enable_cache", value: true },
+            placeholder: "node_modules",
+          },
+          {
+            id: "cache_key",
+            label: "Cache key (GitHub: use ${{ runner.os }}-${{ hashFiles('**/lock*') }} for lockfile)",
+            type: "input",
+            defaultValue: "npm-${{ runner.os }}",
+            visibleIf: { fieldId: "enable_cache", value: true },
+            placeholder: "npm-${{ runner.os }}",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: {{cache_path}}
+          key: {{cache_key}}`,
+          },
+          {
+            platform: "gitlab",
+            template: "",
           },
         ],
       },
@@ -584,6 +649,131 @@ stages:
         echo "{{docker_password}}" | docker login -u "{{docker_username}}" --password-stdin
         docker push {{image_name}}:{{docker_tag}}
       fi`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Deploy to Vercel
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catBuild.id,
+      name: "Deploy to Vercel",
+      type: "group",
+      uiConfig: {
+        fields: [
+          {
+            id: "deploy_vercel",
+            label: "Deploy to Vercel",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "vercel_token_secret",
+            label: "Secret name for Vercel token (add in repo secrets)",
+            type: "input",
+            defaultValue: "VERCEL_TOKEN",
+            visibleIf: { fieldId: "deploy_vercel", value: true },
+            placeholder: "VERCEL_TOKEN",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: \${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: \${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: \${{ secrets.VERCEL_PROJECT_ID }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `deploy_vercel:
+  stage: deploy
+  image: node:20
+  script:
+    - npm i -g vercel
+    - vercel pull --yes --token=$VERCEL_TOKEN
+    - vercel build --token=$VERCEL_TOKEN
+    - vercel deploy --prebuilt --token=$VERCEL_TOKEN --prod
+  variables:
+    VERCEL_TOKEN: $VERCEL_TOKEN`,
+          },
+        ],
+      },
+    },
+  });
+
+  // =======================================================
+  // 5. Notifications
+  // =======================================================
+  const catNotifications = await prisma.componentCategory.create({
+    data: {
+      name: "5. Notifications",
+      slug: "notifications",
+      displayOrder: 5,
+      icon: "Bell",
+    },
+  });
+
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catNotifications.id,
+      name: "Slack Notification",
+      type: "group",
+      uiConfig: {
+        fields: [
+          {
+            id: "enable_slack",
+            label: "Notify Slack on job result",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "slack_webhook_secret",
+            label: "Webhook secret name (e.g. SLACK_WEBHOOK_URL)",
+            type: "input",
+            defaultValue: "SLACK_WEBHOOK_URL",
+            visibleIf: { fieldId: "enable_slack", value: true },
+            placeholder: "SLACK_WEBHOOK_URL",
+          },
+          {
+            id: "slack_notify_on",
+            label: "When to notify",
+            type: "select",
+            defaultValue: "on_failure",
+            visibleIf: { fieldId: "enable_slack", value: true },
+            options: [
+              { label: "On failure only", value: "on_failure" },
+              { label: "On success only", value: "on_success" },
+              { label: "Always", value: "always" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Notify Slack
+        if: {{slack_notify_if}}
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Pipeline \${{ github.workflow }}: \${{ job.status }}"}' \${{ secrets.SLACK_WEBHOOK_URL }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `notify_slack:
+  stage: .post
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST -H 'Content-type: application/json' --data '{"text":"Pipeline $CI_PIPELINE_STATUS"}' "$SLACK_WEBHOOK_URL"
+  rules:
+    - when: always`,
           },
         ],
       },
