@@ -64,7 +64,7 @@ async function main() {
             id: "enable_push",
             label: "Run on Push",
             type: "switch",
-            defaultValue: true,
+            defaultValue: false,
           },
           {
             id: "push_branches",
@@ -127,7 +127,41 @@ stages:
     },
   });
 
-  // 1.3 System & Runner
+  // 1.3 Modular Pipeline (Include)
+
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catGeneral.id,
+      name: "Include Pipeline Files",
+      type: "group",
+      uiConfig: {
+        fields: [
+          {
+            id: "use_include",
+            label: "Include Child Pipelines",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "include_paths", // 🟢 เปลี่ยนชื่อให้เป็นพหูพจน์ (เติม s)
+            label: "Select Target Files",
+            type: "file_multi_select", // 🟢 เปลี่ยนเป็น Type ใหม่ที่เราเพิ่งสร้าง
+            visibleIf: { fieldId: "use_include", value: true },
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "gitlab",
+            template: `include:{{include_paths}}`, // 🟢 ลบช่องว่างออก Engine จะใส่ \n ให้เอง
+          },
+        ],
+      },
+    },
+  });
+
+  // 1.4 System & Runner
   await prisma.pipelineComponent.create({
     data: {
       categoryId: catGeneral.id,
@@ -449,7 +483,7 @@ stages:
             id: "run_build",
             label: "Build Project",
             type: "switch",
-            defaultValue: true,
+            defaultValue: false,
           },
           {
             id: "build_cmd",

@@ -42,6 +42,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  if (!glRes.ok) {
+    if (glRes.status === 401) {
+      // แจ้งให้ Frontend รู้ว่า Token หมดอายุ 
+      return Response.json(
+        { error: "GitLab Token Expired. Please sign out and sign in again." },
+        { status: 401 } 
+      );
+    }
+    return Response.json(
+      { error: "GitLab API Error" },
+      { status: glRes.status }
+    );
+  }
+
   const projects = await glRes.json();
 
   const repos = projects.map((p: any) => ({
@@ -53,7 +67,6 @@ export async function GET(req: NextRequest) {
     html_url: p.web_url,
     provider: "gitlab",
 
-    // 👇 แก้ตรงนี้ครับ: Map ชื่อ field ของ GitLab ให้เข้ากับ Type ของเรา
     stargazers_count: p.star_count, // GitLab ใช้ star_count
     forks_count: p.forks_count, // GitLab ใช้ forks_count
 
@@ -64,7 +77,7 @@ export async function GET(req: NextRequest) {
       avatar_url: p.avatar_url || session.user.image,
     },
 
-    // ส่วน Meta พวกนี้ปล่อยเป็น null หรือ 0 ไปครับ (เพื่อ Performance)
+    // ส่วน Meta พวกนี้ปล่อยเป็น null หรือ 0 
     _meta: {
       branchCount: 0,
       tagCount: 0,

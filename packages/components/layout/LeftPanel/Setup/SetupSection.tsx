@@ -59,6 +59,8 @@ export default function SetupSection({
     updateComponentValue,
     language,
     setLanguage,
+    fileList,
+    selectedFile,
   } = usePipeline();
 
   const toggleCategory = (id: string, currentOpen: boolean) => {
@@ -332,8 +334,8 @@ export default function SetupSection({
                                               const newVal = e.target.checked
                                                 ? [...currentVal, branch]
                                                 : currentVal.filter(
-                                                    (b: string) => b !== branch,
-                                                  );
+                                                  (b: string) => b !== branch,
+                                                );
                                               updateComponentValue(
                                                 field.id,
                                                 newVal,
@@ -348,6 +350,62 @@ export default function SetupSection({
                                       );
                                     })}
                                   </div>
+                                </div>
+                              );
+                            }
+                            
+                            // File Multi Select
+                            
+                            if (field.type === "file_multi_select") {
+                              const currentVal = (componentValues[field.id] as string[]) || [];
+
+                              // กรองเอาเฉพาะไฟล์อื่นที่ไม่ใช่ไฟล์ที่กำลังเปิดอยู่
+                              const availableFiles = fileList
+                                .filter((f) => f.fileName !== selectedFile)
+                                .map((f) => f.fullPath);
+
+                              return (
+                                <div key={field.id} className="py-2 ml-1 bg-[#010819]/20 p-3 rounded-lg border border-white/5">
+                                  <label className="text-xs text-blue-300 uppercase tracking-wider font-bold mb-2 block">
+                                    {field.label}
+                                  </label>
+
+                                  {availableFiles.length === 0 ? (
+                                    <span className="text-xs text-slate-500 italic">No other pipeline files found</span>
+                                  ) : (
+                                    <div className="flex flex-col gap-2">
+                                      {availableFiles.map((path) => {
+                                        const isSelected = currentVal.includes(path);
+                                        return (
+                                          <label
+                                            key={path}
+                                            className={`flex items-center gap-3 p-2 rounded-md border cursor-pointer transition-all select-none ${isSelected
+                                                ? "bg-[#5184FB]/20 border-[#5184FB] text-white"
+                                                : "border-white/5 hover:bg-white/10 text-slate-400"
+                                              }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              className="hidden"
+                                              checked={isSelected}
+                                              onChange={(e) => {
+                                                const newVal = e.target.checked
+                                                  ? [...currentVal, path]
+                                                  : currentVal.filter((p: string) => p !== path);
+                                                updateComponentValue(field.id, newVal);
+                                              }}
+                                            />
+                                            {/* กล่อง Checkbox จำลองสวยๆ */}
+                                            <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${isSelected ? "bg-blue-500 border-blue-500" : "border-slate-500 bg-black/20"
+                                              }`}>
+                                              {isSelected && <div className="w-2 h-2 bg-white rounded-sm" />}
+                                            </div>
+                                            <span className="text-xs font-mono text-slate-300 truncate tracking-tight">{path}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
