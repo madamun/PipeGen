@@ -44,6 +44,7 @@ export default function BranchPicker() {
 
         await fetch("/api/pipeline/sync", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repoFullName: selectedRepo.full_name,
@@ -73,7 +74,7 @@ export default function BranchPicker() {
         onValueChange={(v) => setSelectedBranch(v)}
         disabled={isLoading || availableBranches.length === 0}
       >
-        <SelectTrigger className="h-8 min-w-44 w-44 text-white bg-[#0f1e50] border border-white/20 text-sm">
+        <SelectTrigger aria-label="Choose branch" className="h-8 min-w-44 w-44 text-white bg-[#0f1e50] border border-white/20 text-sm">
           <div className="flex items-center gap-2 overflow-hidden">
             <SelectValue
               placeholder={

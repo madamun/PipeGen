@@ -15,6 +15,7 @@ import {
   Box,
   FileCode,
   ShieldCheck,
+  Bell,
 } from "lucide-react";
 import { Switch } from "../../../ui/switch";
 import { usePipeline } from "../../../workspace/PipelineProvider";
@@ -28,6 +29,7 @@ const IconMap: Record<string, any> = {
   Box: Box,
   FileCode: FileCode,
   ShieldCheck: ShieldCheck,
+  Bell: Bell,
   Default: Box,
 };
 
@@ -39,6 +41,7 @@ interface SetupSectionProps {
   >;
   isCollapsed?: boolean;
   setIsCollapsed?: (val: boolean) => void;
+  searchQuery: string;
 }
 
 export default function SetupSection({
@@ -46,6 +49,7 @@ export default function SetupSection({
   setCategoriesOpen,
   isCollapsed,
   setIsCollapsed,
+  searchQuery,
 }: SetupSectionProps) {
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({
     git: true,
@@ -61,6 +65,8 @@ export default function SetupSection({
     setLanguage,
     fileList,
     selectedFile,
+    selectedRepo,
+    provider,
   } = usePipeline();
 
   const toggleCategory = (id: string, currentOpen: boolean) => {
@@ -71,10 +77,24 @@ export default function SetupSection({
     setSectionsOpen((prev) => ({ ...prev, [key]: !currentOpen }));
   };
 
+  const q = searchQuery.trim().toLowerCase();
+  const filteredCategories = q
+    ? categories
+        .map((cat) => ({
+          ...cat,
+          components: cat.components.filter(
+            (comp) =>
+              cat.name.toLowerCase().includes(q) ||
+              comp.name.toLowerCase().includes(q),
+          ),
+        }))
+        .filter((cat) => cat.components.length > 0)
+    : categories;
+
   if (categories.length === 0)
     return (
       <div className="text-white/50 p-5 italic text-sm text-center">
-        Loading configuration...
+        Loading pipeline setup...
       </div>
     );
 
@@ -104,7 +124,12 @@ export default function SetupSection({
 
   return (
     <div className="w-full max-w-2xl space-y-4 px-1 pb-10">
-      {categories.map((cat) => {
+      {filteredCategories.length === 0 && q ? (
+        <p className="text-slate-500 text-sm text-center py-6">
+          No components match &quot;{searchQuery}&quot;
+        </p>
+      ) : null}
+      {filteredCategories.map((cat) => {
         const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
         const isCatOpen = categoriesOpen[cat.id] ?? false;
 
@@ -139,7 +164,7 @@ export default function SetupSection({
               className={`grid transition-[grid-template-rows] duration-300 ${isCatOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
             >
               <div className="overflow-hidden">
-                <div className="w-full rounded-2xl border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_30px_rgba(0,0,0,0.35)] p-4 space-y-1">
+                <div className="w-full rounded-2xl border border-white/10 bg-[radial-gradient(77.09%_110.2%_at_50%_132.53%,#5184FB_0%,#0437AE_58.53%,#02184B_100%)] p-4 space-y-1">
                   {/* Platform Selection */}
                   {cat.slug === "general" && (
                     <div className="mb-4">
@@ -174,7 +199,9 @@ export default function SetupSection({
                         className="mt-2 border-t border-white/5 pt-2 first:border-0 first:pt-0"
                       >
                         <button
-                          onClick={() => toggleSection(comp.name.toLowerCase(), isOpen)}
+                          onClick={() =>
+                            toggleSection(comp.name.toLowerCase(), isOpen)
+                          }
                           className="flex items-center gap-2 w-full py-2 hover:bg-white/5 rounded px-2 transition-colors group"
                         >
                           {isOpen ? (
@@ -190,6 +217,45 @@ export default function SetupSection({
                         <div
                           className={`pl-6 flex flex-col gap-3 overflow-hidden transition-all duration-300 ${isOpen ? "max-h-[800px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}
                         >
+                          {isOpen &&
+                            (comp.uiConfig?.description ||
+                              comp.uiConfig?.secretsHelp ||
+                              (selectedRepo?.full_name &&
+                                comp.uiConfig?.settingsPathByProvider?.[
+                                  provider
+                                ])) && (
+                              <div className="mb-2 space-y-1.5 pb-2 border-b border-white/5">
+                                {comp.uiConfig?.description && (
+                                  <p className="text-xs text-slate-400 leading-relaxed">
+                                    {comp.uiConfig.description}
+                                  </p>
+                                )}
+                                {comp.uiConfig?.secretsHelp && (
+                                  <p className="text-xs text-slate-500 leading-relaxed">
+                                    {comp.uiConfig.secretsHelp}
+                                  </p>
+                                )}
+                                {selectedRepo?.full_name &&
+                                  comp.uiConfig?.settingsPathByProvider?.[
+                                    provider
+                                  ] && (
+                                    <a
+                                      href={
+                                        provider === "github"
+                                          ? `https://github.com/${selectedRepo.full_name}/${comp.uiConfig.settingsPathByProvider.github}`
+                                          : `https://gitlab.com/${selectedRepo.full_name}/${comp.uiConfig.settingsPathByProvider.gitlab}`
+                                      }
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-300 hover:text-blue-200 hover:underline"
+                                    >
+                                      {provider === "github"
+                                        ? "Open repo Settings → Secrets"
+                                        : "Open CI/CD settings"}
+                                    </a>
+                                  )}
+                              </div>
+                            )}
                           {comp.uiConfig?.fields?.map((field: any) => {
                             // Check Visibility
                             if (field.visibleIf) {
@@ -261,11 +327,16 @@ export default function SetupSection({
                                   key={field.id}
                                   className="flex flex-col gap-1.5 py-1 ml-1"
                                 >
-                                  <label className="text-xs text-slate-400 font-medium">
+                                  <label
+                                    htmlFor={`setup-select-${field.id}`}
+                                    className="text-xs text-slate-400 font-medium"
+                                  >
                                     {field.label}
                                   </label>
                                   <div className="relative">
                                     <select
+                                      id={`setup-select-${field.id}`}
+                                      title={field.label}
                                       value={
                                         componentValues[field.id] !== undefined
                                           ? componentValues[field.id]
@@ -298,7 +369,10 @@ export default function SetupSection({
 
                             // Branch Select
                             if (field.type === "branch_select") {
-                              const currentVal = componentValues[field.id] || [];
+                              const raw = componentValues[field.id];
+                              const currentVal: string[] = Array.isArray(raw)
+                                ? raw
+                                : [];
                               return (
                                 <div
                                   key={field.id}

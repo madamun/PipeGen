@@ -40,6 +40,7 @@ export default function LoginPage() {
               height={50}
               priority
               className="drop-shadow-lg"
+              unoptimized
             />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-100">Welcome to Pipe Gen</h1>

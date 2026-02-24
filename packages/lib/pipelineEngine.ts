@@ -49,14 +49,27 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
   if (targetSyntax === 'github') {
     if (allContext['enable_push']) triggerBlock += `  push:\n    branches: ${JSON.stringify(allContext['push_branches'] || ['main'])}\n`;
     if (allContext['enable_pr']) triggerBlock += `  pull_request:\n    branches: ${JSON.stringify(allContext['pr_branches'] || ['main'])}\n`;
+    if (allContext['enable_schedule'] && allContext['cron_expression']) {
+      const cron = String(allContext['cron_expression']).trim();
+      if (cron) triggerBlock += `  schedule:\n  - cron: '${cron}'\n`;
+    }
     if (!triggerBlock) triggerBlock = "  workflow_dispatch:";
   } else {
-    if (allContext['enable_push']) (allContext['push_branches'] || ['main']).forEach((b: string) => triggerBlock += `    - if: $CI_COMMIT_BRANCH == "${b}"\n`);
-    if (allContext['enable_pr']) (allContext['pr_branches'] || ['main']).forEach((b: string) => triggerBlock += `    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"\n`);
+    const pushBranches: string[] = Array.isArray(allContext['push_branches']) ? allContext['push_branches'] : ['main'];
+    const prBranches: string[] = Array.isArray(allContext['pr_branches']) ? allContext['pr_branches'] : ['main'];
+    if (allContext['enable_push']) pushBranches.forEach((b) => triggerBlock += `    - if: $CI_COMMIT_BRANCH == "${b}"\n`);
+    if (allContext['enable_pr']) prBranches.forEach((b) => triggerBlock += `    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"\n`);
     if (!triggerBlock) triggerBlock = "    - when: manual";
   }
 
   baseYaml = baseYaml.replace("{{TRIGGER_BLOCK}}", triggerBlock);
+
+  // Computed: Slack notify condition for GitHub Actions if: expression
+  const slackOn = allContext['slack_notify_on'];
+  if (slackOn === 'always') allContext['slack_notify_if'] = 'always()';
+  else if (slackOn === 'on_success') allContext['slack_notify_if'] = 'success()';
+  else if (slackOn === 'on_failure') allContext['slack_notify_if'] = 'failure()';
+  else allContext['slack_notify_if'] = 'failure()';
 
   let stepsCode = "";
   let jobsCode = "";
@@ -71,11 +84,12 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
       if (isActive && comp.syntaxes) {
         const syntax = comp.syntaxes.find((s) => s.platform === targetSyntax);
         if (syntax && syntax.template) {
-
-          // 1. แปลงค่าตัวแปร (รองรับ Array สำหรับ include_paths)
+          
+          // 1. แปลงค่าตัวแปร (รองรับ Array สำหรับ include_paths ของ GitLab)
           let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => {
             const val = allContext[variableName];
             if (val !== undefined) {
+              // เช็คว่าเป็น include_paths หรือไม่ ถ้าใช่ให้แปลงเป็น List สำหรับ YAML
               if (Array.isArray(val) && variableName === 'include_paths') {
                 if (val.length === 0) return '';
                 return val.map(p => `\n  - local: '${p}'`).join('');
@@ -85,8 +99,8 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
             return match;
           });
 
+          // ป้องกันการสร้างบล็อก include: เปล่าๆ
           if (template.trim() === 'include:') return;
-
           targetSyntax === 'github' ? stepsCode += "\n" + template : jobsCode += "\n" + template;
         }
       }
@@ -168,7 +182,7 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
                         if (val === "|" || val === ">" || val === "") continue;
 
                         if (field && field.type === 'select' && field.options) {
-                          
+
                           const isValidOption = field.options.some((opt: any) => opt.value === val);
 
                           if (isValidOption) {
@@ -210,8 +224,12 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
       });
     });
 
-    if (detected === 'github') {
-      const on = docAny.on as { push?: { branches?: string[] }; pull_request?: { branches?: string[] } } | undefined;
+if (detected === 'github') {
+      const on = docAny.on as {
+        push?: { branches?: string[] };
+        pull_request?: { branches?: string[] };
+        schedule?: { cron: string }[];
+      } | undefined;
       if (on?.push?.branches) {
         newValues['enable_push'] = true;
         newValues['push_branches'] = on.push.branches;
@@ -221,6 +239,11 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
         newValues['enable_pr'] = true;
         newValues['pr_branches'] = on.pull_request.branches;
       } else { newValues['enable_pr'] = false; }
+
+      if (on?.schedule?.length && on.schedule[0]?.cron) {
+        newValues['enable_schedule'] = true;
+        newValues['cron_expression'] = on.schedule[0].cron;
+      } else { newValues['enable_schedule'] = false; }
     }
 
     if (detected === 'gitlab') {
@@ -251,7 +274,7 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
 
       // 2. จัดการเรื่อง Triggers (Branch / PR)
       const workflow = docAny.workflow as { rules?: { if?: string }[] } | undefined;
-      
+
       if (workflow && workflow.rules) {
         const pushBranches: string[] = [];
         const prBranches: string[] = [];
@@ -294,7 +317,7 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
         newValues['enable_pr'] = false;
         newValues['pr_branches'] = [];
       }
-    } 
+    }
 
     return { detectedSyntax: detected, newValues };
   } catch (e) {

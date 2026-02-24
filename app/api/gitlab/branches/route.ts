@@ -42,8 +42,18 @@ export async function GET(req: NextRequest) {
     );
 
     if (!glRes.ok) {
-      // ถ้าหาไม่เจอ หรือ Error
-      return Response.json({ branches: [] });
+      const errorText = await glRes.text();
+      let errorMessage = "Cannot list branches";
+      try {
+        const parsed = JSON.parse(errorText) as { message?: string; error?: string };
+        errorMessage = parsed.message || parsed.error || errorMessage;
+      } catch {
+        if (errorText) errorMessage = errorText.slice(0, 200);
+      }
+      return Response.json(
+        { error: errorMessage, detail: errorText.slice(0, 300), branches: [] },
+        { status: glRes.status },
+      );
     }
 
     const branchesData = await glRes.json();

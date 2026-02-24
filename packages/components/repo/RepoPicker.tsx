@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -45,69 +46,33 @@ type Repo = {
 
 export default function RepoPicker(props: { children?: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-
-  const [me, setMe] = React.useState<{
-    login: string;
-    avatar_url?: string;
-  } | null>(null);
-  const [repos, setRepos] = React.useState<Repo[]>([]);
 
   const { provider, setSelectedRepo, setSelectedBranch } = usePipeline();
-  async function loadRepos(forceRefresh = false) {
-    setLoading(true);
-    try {
-      const cacheKey = `pipegen_repos_cache_${provider}`;
-      const CACHE_TTL = 20 * 60 * 1000; // 20 นาที 
-
-      if (!forceRefresh) {
-        const cachedString = sessionStorage.getItem(cacheKey);
-        if (cachedString) {
-          const cachedData = JSON.parse(cachedString);
-          const now = Date.now();
-
-          if (now - cachedData.timestamp < CACHE_TTL) {
-            setMe(cachedData.me);
-            setRepos(cachedData.repos);
-            setLoading(false);
-            return; 
-          }
-        }
-      }
-
-      // 2. ดึงข้อมูลใหม่จาก API
+  const {
+    data: reposData,
+    isLoading: loading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["repos", provider],
+    queryFn: async () => {
       const endpoint =
         provider === "gitlab" ? "/api/gitlab/repos" : "/api/github/repos";
-
-      const res = await fetch(endpoint, { cache: "no-store" });
+      const res = await fetch(endpoint, {
+        cache: "no-store",
+        credentials: "include",
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error((data as { error?: string })?.error || "Fetch error");
+      return { me: data.me as { login: string; avatar_url?: string } | null, repos: (data.repos || []) as Repo[] };
+    },
+    enabled: open && !!provider,
+  });
 
-      if (!res.ok) throw new Error(data?.error || "Fetch error");
-
-      setMe(data.me);
-      setRepos(data.repos as Repo[]);
-
-      // 3. เซฟข้อมูล พร้อม "แสตมป์เวลาปัจจุบัน" 
-      const dataToCache = {
-        me: data.me,
-        repos: data.repos,
-        timestamp: Date.now(), 
-      };
-      sessionStorage.setItem(cacheKey, JSON.stringify(dataToCache));
-
-    } catch (e) {
-      console.error("Load repo error:", e);
-      if (!repos.length) setRepos([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    if (open) loadRepos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, provider]);
-
+  const me = reposData?.me ?? null;
+  const repos = reposData?.repos ?? [];
   const my = React.useMemo(
     () => repos.filter((r) => r.owner?.login === me?.login),
     [repos, me?.login],
@@ -166,23 +131,37 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
               size="sm"
               variant="secondary"
               className="bg-white/20 hover:bg-white/30 text-white border-none"
-              // 🔥 4. ปรับ onClick ให้ส่งค่า true ไป เพื่อสั่งบังคับดึง API ใหม่
-              onClick={() => loadRepos(true)}
-              disabled={loading}
+              onClick={() => refetch()}
+              disabled={loading || isFetching}
             >
               <RefreshCw
-                className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                className={`mr-2 h-4 w-4 ${loading || isFetching ? "animate-spin" : ""}`}
               />
               Refresh
             </Button>
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
-            {loading ? (
+            {isError && error ? (
+              <div className="p-6 text-center flex flex-col items-center gap-3">
+                <p className="text-sm text-amber-200">
+                  Could not load repositories: {error instanceof Error ? error.message : "Unknown error"}
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-white/20 hover:bg-white/30 text-white border-none"
+                  onClick={() => refetch()}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            ) : loading && !repos.length ? (
               <GridSkeleton />
             ) : (
               <>
-                <TabsContent value="my" className="m-0 mt-0">
+                <TabsContent value="my" className=" m-1 mt-1">
                   <RepoGrid repos={my} onPick={pick} />
                 </TabsContent>
                 <TabsContent value="co" className="m-0 mt-0">

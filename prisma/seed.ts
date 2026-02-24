@@ -93,6 +93,20 @@ async function main() {
                 '    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == {{value}}',
             },
           },
+          {
+            id: "enable_schedule",
+            label: "Run on Schedule (Cron)",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "cron_expression",
+            label: "Cron Expression",
+            type: "input",
+            defaultValue: "0 * * * *",
+            visibleIf: { fieldId: "enable_schedule", value: true },
+            placeholder: "0 * * * * (every hour)",
+          },
         ],
       },
       syntaxes: {
@@ -357,6 +371,158 @@ stages:
     },
   });
 
+  // Go
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Go",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "use_go", label: "Enable Go", type: "switch", defaultValue: false },
+          {
+            id: "go_version",
+            label: "Go Version",
+            type: "select",
+            defaultValue: "1.21",
+            visibleIf: { fieldId: "use_go", value: true },
+            options: [
+              { label: "1.22", value: "1.22" },
+              { label: "1.21", value: "1.21" },
+              { label: "1.20", value: "1.20" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '{{go_version}}'
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test -v ./...`,
+          },
+          {
+            platform: "gitlab",
+            template: `setup_go:
+  stage: setup
+  image: golang:{{go_version}}
+  script:
+    - go build -v ./...
+    - go test -v ./...`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Rust
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Rust",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "use_rust", label: "Enable Rust", type: "switch", defaultValue: false },
+          {
+            id: "rust_version",
+            label: "Rust Version",
+            type: "select",
+            defaultValue: "stable",
+            visibleIf: { fieldId: "use_rust", value: true },
+            options: [
+              { label: "stable", value: "stable" },
+              { label: "1.75", value: "1.75" },
+              { label: "1.70", value: "1.70" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: {{rust_version}}
+      - name: Build
+        run: cargo build --release
+      - name: Test
+        run: cargo test`,
+          },
+          {
+            platform: "gitlab",
+            template: `setup_rust:
+  stage: setup
+  image: rust:{{rust_version}}
+  script:
+    - cargo build --release
+    - cargo test`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Dependency Cache (GitHub: actions/cache; GitLab: cache in default workflow)
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Dependency Cache",
+      type: "group",
+      uiConfig: {
+        description: "Cache dependencies (e.g. node_modules) to speed up later runs. GitHub uses actions/cache; GitLab uses built-in cache in the workflow. No repo secrets required.",
+        fields: [
+          {
+            id: "enable_cache",
+            label: "Enable dependency cache",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "cache_path",
+            label: "Cache path",
+            type: "input",
+            defaultValue: "node_modules",
+            visibleIf: { fieldId: "enable_cache", value: true },
+            placeholder: "node_modules",
+          },
+          {
+            id: "cache_key",
+            label: "Cache key (GitHub: use ${{ runner.os }}-${{ hashFiles('**/lock*') }} for lockfile)",
+            type: "input",
+            defaultValue: "npm-${{ runner.os }}",
+            visibleIf: { fieldId: "enable_cache", value: true },
+            placeholder: "npm-${{ runner.os }}",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: {{cache_path}}
+          key: {{cache_key}}`,
+          },
+          {
+            platform: "gitlab",
+            template: "",
+          },
+        ],
+      },
+    },
+  });
+
   // =======================================================
   // 3. Quality Checks
   // =======================================================
@@ -460,6 +626,128 @@ stages:
     },
   });
 
+  // Security / SAST
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catQuality.id,
+      name: "Security (SAST / audit)",
+      type: "group",
+      uiConfig: {
+        description: "Run security checks: npm audit (dependency audit), Trivy (container/files scan), or CodeQL (GitHub). No repo secrets needed for npm audit.",
+        fields: [
+          { id: "enable_security", label: "Run security checks", type: "switch", defaultValue: false },
+          {
+            id: "security_tool",
+            label: "Tool",
+            type: "select",
+            defaultValue: "npm_audit",
+            visibleIf: { fieldId: "enable_security", value: true },
+            options: [
+              { label: "npm audit", value: "npm_audit" },
+              { label: "Trivy (container/files)", value: "trivy" },
+              { label: "CodeQL (GitHub)", value: "codeql" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Security check
+        run: |
+          case "{{security_tool}}" in
+            npm_audit) npm audit --audit-level=high ;;
+            trivy) docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$PWD:/src aquasec/trivy fs --exit-code 1 /src ;;
+            codeql) echo "Add CodeQL action step manually if needed" ;;
+            *) npm audit --audit-level=high ;;
+          esac`,
+          },
+          {
+            platform: "gitlab",
+            template: `security_job:
+  stage: test
+  image: node:{{node_version}}
+  script:
+    - |
+      case "{{security_tool}}" in
+        npm_audit) npm audit --audit-level=high ;;
+        trivy) docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PWD:/src aquasec/trivy fs --exit-code 1 /src ;;
+        *) npm audit --audit-level=high ;;
+      esac`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Coverage (Codecov / Coveralls)
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catQuality.id,
+      name: "Coverage report",
+      type: "group",
+      uiConfig: {
+        description: "Upload test coverage to Codecov or Coveralls. The workflow uses a token from repo secrets/variables.",
+        secretsHelp: "Add your coverage token (e.g. CODECOV_TOKEN) in repo Settings → Secrets (GitHub) or CI/CD Variables (GitLab).",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
+        fields: [
+          { id: "enable_coverage", label: "Upload coverage", type: "switch", defaultValue: false },
+          {
+            id: "coverage_provider",
+            label: "Provider",
+            type: "select",
+            defaultValue: "codecov",
+            visibleIf: { fieldId: "enable_coverage", value: true },
+            options: [
+              { label: "Codecov", value: "codecov" },
+              { label: "Coveralls", value: "coveralls" },
+            ],
+          },
+          {
+            id: "coverage_token_secret",
+            label: "Token secret name",
+            type: "input",
+            defaultValue: "CODECOV_TOKEN",
+            visibleIf: { fieldId: "enable_coverage", value: true },
+            placeholder: "CODECOV_TOKEN",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Upload coverage
+        if: {{coverage_provider}} == 'codecov'
+        uses: codecov/codecov-action@v4
+        with:
+          token: \${{ secrets.CODECOV_TOKEN }}
+      - name: Upload to Coveralls
+        if: {{coverage_provider}} == 'coveralls'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: \${{ secrets.GITHUB_TOKEN }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `coverage_job:
+  stage: test
+  image: node:{{node_version}}
+  script:
+    - npm test -- --coverage
+  coverage: '/All files[^|]*\\|\\s*([\\d.]+)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml`,
+          },
+        ],
+      },
+    },
+  });
+
   // =======================================================
   // 4. Build & Delivery
   // =======================================================
@@ -531,6 +819,9 @@ stages:
       name: "Docker Containerization",
       type: "group",
       uiConfig: {
+        description: "Build a Docker image and optionally push it to Docker Hub. Pushing requires Docker Hub credentials in repo secrets.",
+        secretsHelp: "If pushing to Docker Hub: add DOCKER_USERNAME and DOCKER_PASSWORD (or DOCKER_TOKEN) in repo Settings → Secrets / CI/CD Variables.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
         fields: [
           {
             id: "docker_build",
@@ -618,6 +909,137 @@ stages:
         echo "{{docker_password}}" | docker login -u "{{docker_username}}" --password-stdin
         docker push {{image_name}}:{{docker_tag}}
       fi`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Deploy to Vercel
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catBuild.id,
+      name: "Deploy to Vercel",
+      type: "group",
+      uiConfig: {
+        description: "Deploy the built app to Vercel. The workflow uses the Vercel token (and optional org/project IDs) from repo secrets.",
+        secretsHelp: "Add VERCEL_TOKEN in repo Settings → Secrets. On GitHub you can also set VERCEL_ORG_ID and VERCEL_PROJECT_ID.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
+        fields: [
+          {
+            id: "deploy_vercel",
+            label: "Deploy to Vercel",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "vercel_token_secret",
+            label: "Secret name for Vercel token (add in repo secrets)",
+            type: "input",
+            defaultValue: "VERCEL_TOKEN",
+            visibleIf: { fieldId: "deploy_vercel", value: true },
+            placeholder: "VERCEL_TOKEN",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: \${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: \${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: \${{ secrets.VERCEL_PROJECT_ID }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `deploy_vercel:
+  stage: deploy
+  image: node:20
+  script:
+    - npm i -g vercel
+    - vercel pull --yes --token=$VERCEL_TOKEN
+    - vercel build --token=$VERCEL_TOKEN
+    - vercel deploy --prebuilt --token=$VERCEL_TOKEN --prod
+  variables:
+    VERCEL_TOKEN: $VERCEL_TOKEN`,
+          },
+        ],
+      },
+    },
+  });
+
+  // =======================================================
+  // 5. Notifications
+  // =======================================================
+  const catNotifications = await prisma.componentCategory.create({
+    data: {
+      name: "5. Notifications",
+      slug: "notifications",
+      displayOrder: 5,
+      icon: "Bell",
+    },
+  });
+
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catNotifications.id,
+      name: "Slack Notification",
+      type: "group",
+      uiConfig: {
+        description: "Send a notification to Slack when the job succeeds or fails, using an Incoming Webhook URL.",
+        secretsHelp: "Add your Slack webhook URL as a secret (e.g. SLACK_WEBHOOK_URL) in repo Settings → Secrets / CI/CD Variables.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
+        fields: [
+          {
+            id: "enable_slack",
+            label: "Notify Slack on job result",
+            type: "switch",
+            defaultValue: false,
+          },
+          {
+            id: "slack_webhook_secret",
+            label: "Webhook secret name (e.g. SLACK_WEBHOOK_URL)",
+            type: "input",
+            defaultValue: "SLACK_WEBHOOK_URL",
+            visibleIf: { fieldId: "enable_slack", value: true },
+            placeholder: "SLACK_WEBHOOK_URL",
+          },
+          {
+            id: "slack_notify_on",
+            label: "When to notify",
+            type: "select",
+            defaultValue: "on_failure",
+            visibleIf: { fieldId: "enable_slack", value: true },
+            options: [
+              { label: "On failure only", value: "on_failure" },
+              { label: "On success only", value: "on_success" },
+              { label: "Always", value: "always" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Notify Slack
+        if: {{slack_notify_if}}
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Pipeline \${{ github.workflow }}: \${{ job.status }}"}' \${{ secrets.SLACK_WEBHOOK_URL }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `notify_slack:
+  stage: .post
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST -H 'Content-type: application/json' --data '{"text":"Pipeline $CI_PIPELINE_STATUS"}' "$SLACK_WEBHOOK_URL"
+  rules:
+    - when: always`,
           },
         ],
       },

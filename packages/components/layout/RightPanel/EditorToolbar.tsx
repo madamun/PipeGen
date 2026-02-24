@@ -104,6 +104,7 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={() => handleZoom("out")}
+                aria-label="Zoom Out"
                 className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <Minus className="w-3.5 h-3.5" />
@@ -124,6 +125,7 @@ export default function EditorToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                aria-label="Zoom In"
                 onClick={() => handleZoom("in")}
                 className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
@@ -146,6 +148,7 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={() => setIsDiffMode(!isDiffMode)}
+                aria-label={isDiffMode ? "Switch to Editor mode" : "View diff"}
                 className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819] ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
               >
                 {isDiffMode ? (
@@ -171,6 +174,7 @@ export default function EditorToolbar({
             <TooltipTrigger asChild>
               <button
                 onClick={handleCopy}
+                aria-label={copied ? "Copied" : "Copy code"}
                 className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 {copied ? (
@@ -192,7 +196,7 @@ export default function EditorToolbar({
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
+                <DropdownMenuTrigger aria-label="Export options" className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
                   <Share className="w-4 h-4" />
                 </DropdownMenuTrigger>
               </TooltipTrigger>

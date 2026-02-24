@@ -36,6 +36,12 @@ export interface ComponentField {
 
 export interface ComponentUiConfig {
   fields?: ComponentField[];
+  /** Short description of what this block does. */
+  description?: string;
+  /** Help text for which secrets/variables to set and where. */
+  secretsHelp?: string;
+  /** Path segment for repo settings URL by provider (e.g. GitHub Secrets, GitLab CI/CD). */
+  settingsPathByProvider?: { github?: string; gitlab?: string };
 }
 
 export interface PipelineComponent {

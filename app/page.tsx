@@ -3,9 +3,9 @@ import Workspace from "../packages/components/workspace/Workspace";
 
 export default function Page() {
   return (
-    <div className="flex flex-col gap-4">
+    <main className="flex flex-col gap-4">
       <Topbar />
       <Workspace />
-    </div>
+    </main>
   );
 }
