@@ -5,6 +5,7 @@ import {
   ArrowLeftToLine,
   ChevronsUpDown,
   ArrowRightToLine,
+  Search,
 } from "lucide-react";
 import SetupSection from "./Setup/SetupSection";
 import { usePipeline } from "../../workspace/PipelineProvider";
@@ -15,17 +16,19 @@ function LeftTop({
   onToggleAll,
   isCollapsed,
   setIsCollapsed,
+  searchQuery,
+  setSearchQuery,
 }: {
   onToggleAll: () => void;
   isCollapsed: boolean;
   setIsCollapsed: (val: boolean) => void;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
 }) {
   return (
     <div
-      className={`flex h-11 items-center px-5 transition-all duration-300 ${isCollapsed ? "justify-center px-0" : "justify-between w-full"}`}
+      className={`flex h-11 items-center gap-2 px-5 transition-all duration-300 ${isCollapsed ? "justify-center px-0" : "w-full"}`}
     >
-      {/* ปุ่มซ้าย */}
-      {/* 🔥 ปุ่มลูกศร (กดแล้วสลับสถานะ ยุบ <-> ขยาย) */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="text-white/70 hover:text-white transition-colors flex shrink-0 items-center justify-center w-8 h-8 rounded-md hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
@@ -39,13 +42,25 @@ function LeftTop({
       </button>
 
       {!isCollapsed && (
-        <button
-          onClick={onToggleAll}
-          className="text-white/70 hover:text-white transition-colors shrink-0 rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
-          title="Expand or collapse all categories"
-        >
-          <ChevronsUpDown className="h-4 w-4" />
-        </button>
+        <>
+          <div className="flex-1 min-w-0 relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search components..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-7 pr-2 rounded-md bg-white/5 border border-white/10 text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30"
+            />
+          </div>
+          <button
+            onClick={onToggleAll}
+            className="text-white/70 hover:text-white transition-colors shrink-0 rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
+            title="Expand or collapse all categories"
+          >
+            <ChevronsUpDown className="h-4 w-4" />
+          </button>
+        </>
       )}
     </div>
   );
@@ -66,6 +81,7 @@ export default function LeftPanel({
   const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>(
     {},
   );
+  const [searchQuery, setSearchQuery] = useState("");
 
   // ฟังก์ชันฉลาดๆ สำหรับเปิด/ปิดทั้งหมด
   const toggleAllCategories = () => {
@@ -88,6 +104,8 @@ export default function LeftPanel({
         onToggleAll={toggleAllCategories}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
       />
 
       {/* เส้นคั่นสีฟ้าสดใส */}
@@ -103,6 +121,7 @@ export default function LeftPanel({
           setCategoriesOpen={setCategoriesOpen}
           isCollapsed={isCollapsed}
           setIsCollapsed={setIsCollapsed}
+          searchQuery={searchQuery}
         />
       </div>
     </div>

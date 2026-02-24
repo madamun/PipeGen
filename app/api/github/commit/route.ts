@@ -8,13 +8,21 @@ export const dynamic = "force-dynamic";
 
 type Body = {
   full_name: string; // "owner/repo"
-  baseBranch: string; // "main"
+  baseBranch: string; // "main" (used as base when creating new branch)
+  branch: string; // target branch (existing = update, new = create then push)
   mode: "push" | "pull_request";
   title: string;
   message: string;
   path: string; // e.g. ".github/workflows/pipegen.yaml"
   content: string; // file content (YAML)
 };
+
+// Branch name: letters, numbers, /, -, _ (Git ref rules, no spaces)
+const VALID_BRANCH_REGEX = /^[a-zA-Z0-9/_.-]+$/;
+function isValidBranchName(name: string): boolean {
+  const t = name.trim();
+  return t.length > 0 && t.length <= 200 && VALID_BRANCH_REGEX.test(t);
+}
 
 const slug = (s: string) =>
   s
@@ -31,10 +39,20 @@ export async function POST(req: NextRequest) {
 
   // 2) body
   const body = (await req.json()) as Body;
-  const { full_name, baseBranch, mode, title, message, path, content } = body;
+  const { full_name, baseBranch, branch: targetBranch, mode, title, message, path, content } = body;
 
   if (!full_name || !baseBranch || !mode || !path || !content) {
     return Response.json({ error: "Missing fields" }, { status: 400 });
+  }
+  const branch = (targetBranch || baseBranch).trim();
+  if (!branch) {
+    return Response.json({ error: "Branch name is required" }, { status: 400 });
+  }
+  if (!isValidBranchName(branch)) {
+    return Response.json(
+      { error: "Branch name can only use letters, numbers, /, -, _, and ." },
+      { status: 400 },
+    );
   }
 
   // 3) find token
@@ -88,10 +106,19 @@ export async function POST(req: NextRequest) {
     return r.json();
   }
 
-  // helper: get base sha
-  async function getBaseSha(branch: string) {
+  // helper: check if branch exists
+  async function branchExists(branchName: string): Promise<boolean> {
     const r = await fetch(
-      `https://api.github.com/repos/${full_name}/git/ref/heads/${encodeURIComponent(branch)}`,
+      `https://api.github.com/repos/${full_name}/git/ref/heads/${encodeURIComponent(branchName)}`,
+      { headers: ghHeaders },
+    );
+    return r.ok;
+  }
+
+  // helper: get base sha
+  async function getBaseSha(branchName: string) {
+    const r = await fetch(
+      `https://api.github.com/repos/${full_name}/git/ref/heads/${encodeURIComponent(branchName)}`,
       { headers: ghHeaders },
     );
     if (!r.ok) {
@@ -112,8 +139,14 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({ ref: `refs/heads/${newBranch}`, sha: fromSha }),
       },
     );
-    if (!r.ok && r.status !== 422) {
-      // 422 = already exists
+    if (r.status === 422) {
+      const j = await r.json().catch(() => ({}));
+      const msg = j?.message?.includes("already exists")
+        ? "Branch already exists. Choose another name."
+        : "Branch already exists or name is invalid.";
+      throw new Error(msg);
+    }
+    if (!r.ok) {
       const t = await r.text();
       throw new Error(`createBranch ${r.status} ${t.slice(0, 120)}`);
     }
@@ -121,8 +154,13 @@ export async function POST(req: NextRequest) {
 
   try {
     if (mode === "push") {
-      // direct push to baseBranch
-      const result = await putFile(baseBranch);
+      // branch exists -> update; else create from baseBranch then push
+      const exists = await branchExists(branch);
+      if (!exists) {
+        const baseSha = await getBaseSha(baseBranch);
+        await createBranch(baseSha, branch);
+      }
+      const result = await putFile(branch);
       return Response.json({
         ok: true,
         html_url: result?.content?.html_url || result?.commit?.html_url || null,
