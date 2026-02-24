@@ -176,10 +176,20 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedRepo]);
 
-  const getFullFilePath = (fileName: string) =>
-    selectedRepo?.provider === "gitlab"
-      ? fileName
-      : `.github/workflows/${fileName}`;
+  const getFullFilePath = (fileName: string) => {
+    if (!fileName) return "";
+    
+    if (selectedRepo?.provider === "gitlab") {
+      // ถ้าเป็นไฟล์หลัก หรือมีโฟลเดอร์มาแล้ว ให้ใช้ชื่อนั้นเลย
+      if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) {
+        return fileName;
+      }
+      // ถ้าเป็นชื่อไฟล์ลอยๆ ให้ยัดเข้า .gitlab/ci/ อัตโนมัติ (เหมือนตอน Commit)
+      return `.gitlab/ci/${fileName}`;
+    }
+    // ฝั่ง GitHub
+    return fileName.includes("/") ? fileName : `.github/workflows/${fileName}`;
+  };
 
   // --- Setup & Update Actions ---
   const setProvider = (newSyntax: "github" | "gitlab") => {

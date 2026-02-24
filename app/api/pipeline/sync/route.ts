@@ -53,24 +53,30 @@ export async function POST(req: Request) {
       }
     } else if (provider === "gitlab") {
       const encodedPath = encodeURIComponent(repoFullName);
+      // 1. ใช้ API /tree พร้อม recursive=true เพื่อหาไฟล์ย่อย
       const glRes = await fetch(
-        `https://gitlab.com/api/v4/projects/${encodedPath}/repository/files/.gitlab-ci.yml?ref=${targetBranch}`,
-        {
-          method: "HEAD",
-          headers: { Authorization: `Bearer ${account.accessToken}` },
-        },
+        `https://gitlab.com/api/v4/projects/${encodedPath}/repository/tree?ref=${targetBranch}&recursive=true&per_page=100`,
+        { headers: { Authorization: `Bearer ${account.accessToken}` } }
       );
       if (glRes.ok) {
-        foundFiles.push({ name: ".gitlab-ci.yml", path: ".gitlab-ci.yml" });
+        const files = await glRes.json();
+        if (Array.isArray(files)) {
+          // 2. กรองเอาเฉพาะไฟล์ Pipeline จริงๆ
+          foundFiles = files
+            .filter((f: any) => {
+              if (f.type !== "blob") return false;
+              const lowerPath = f.path.toLowerCase();
+              if (!lowerPath.endsWith(".yml") && !lowerPath.endsWith(".yaml")) return false;
+              // เอาแค่ไฟล์หลัก หรือไฟล์ที่อยู่ใน .gitlab/ci/
+              return lowerPath === ".gitlab-ci.yml" || lowerPath.startsWith(".gitlab/ci/");
+            })
+            .map((f: any) => ({ name: f.name, path: f.path })); // ใช้ f.path เพื่อเก็บโฟลเดอร์ด้วย
+        }
       }
     }
 
-    if (foundFiles.length === 0) {
-      return NextResponse.json({ count: 0, message: "No pipelines found" });
-    }
-
     // -------------------------------------------------------
-    // 🔥 FIX KEY: จัดการ Repo ใน DB ให้ถูกต้อง
+    // FIX KEY: จัดการ Repo ใน DB ให้ถูกต้อง
     // -------------------------------------------------------
     let repo = await prisma.repository.findFirst({
       where: { fullName: repoFullName, userId: session.user.id },

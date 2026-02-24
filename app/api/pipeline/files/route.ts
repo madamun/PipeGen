@@ -89,12 +89,10 @@ export async function GET(req: Request) {
         // ==========================================
         // 🦊 GITLAB LOGIC (พระเอกของเรา)
         // ==========================================
-        else if (provider === "gitlab") {
+else if (provider === "gitlab") {
           const encodedId = encodeURIComponent(repoFullName);
-          const filePath = ".gitlab-ci.yml";
-
-          // 🔥 ใช้ URL นี้เพื่อดึง "เนื้อหาดิบ (Raw)"
-          const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${branch}`;
+          // 🔥 1. ดึง Tree แบบลึก
+          const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/tree?ref=${branch}&recursive=true&per_page=100`;
 
           const glRes = await fetch(apiUrl, {
             method: "GET",
@@ -102,14 +100,24 @@ export async function GET(req: Request) {
           });
 
           if (glRes.ok) {
-            const contentText = await glRes.text(); // ✅ อ่านเนื้อหาออกมาเลย
-
-            gitFiles.push({
-              fileName: ".gitlab-ci.yml",
-              fullPath: ".gitlab-ci.yml",
-              source: "git",
-              content: contentText, // ✅ ส่งเนื้อหาไปด้วย! หน้าบ้านจะได้ไม่ต้องไปหาเอง
-            });
+            const files = await glRes.json();
+            if (Array.isArray(files)) {
+              // 2. กรองเหมือนกับหน้า Sync
+              const ymlFiles = files.filter((f: any) => {
+                if (f.type !== "blob") return false;
+                const lowerPath = f.path.toLowerCase();
+                return (lowerPath.endsWith(".yml") || lowerPath.endsWith(".yaml")) && 
+                       (lowerPath === ".gitlab-ci.yml" || lowerPath.startsWith(".gitlab/ci/"));
+              });
+              
+              ymlFiles.forEach((f: any) => {
+                gitFiles.push({
+                  fileName: f.name, 
+                  fullPath: f.path, // ส่ง Path เต็มกลับไป
+                  source: "git",
+                });
+              });
+            }
           }
         }
       }

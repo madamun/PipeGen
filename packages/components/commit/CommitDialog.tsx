@@ -55,11 +55,15 @@ export default function CommitDialog(props: Props) {
       (provider === "gitlab" ? ".gitlab-ci.yml" : "pipeline.yml");
 
     if (provider === "github") {
-      return `.github/workflows/${fileName}`;
-    } else {
-      // GitLab: บังคับชื่อ .gitlab-ci.yml ถ้า user ไม่ได้ตั้งชื่ออื่น (แต่ปกติควรเป็นชื่อนี้)
-      return fileName.endsWith(".yml") ? fileName : ".gitlab-ci.yml";
+      return fileName.includes("/") ? fileName : `.github/workflows/${fileName}`;
+    } else if (provider === "gitlab") {
+      // ความฉลาด: ถ้าชื่อไม่ใช่ไฟล์หลัก และยังไม่มีโฟลเดอร์ ให้ยัดเข้า .gitlab/ci/ อัตโนมัติ
+      if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) {
+        return fileName;
+      }
+      return `.gitlab/ci/${fileName}`;
     }
+    return fileName;
   }, [selectedFile, provider]);
 
   const {

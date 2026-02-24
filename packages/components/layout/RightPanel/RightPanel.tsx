@@ -67,19 +67,13 @@ function EditorHeader({
   }, [isEditing]);
 
   const startRenaming = () => {
-    if (provider === "gitlab") return;
     setTempName(selectedFile);
     setIsEditing(true);
   };
   const handleCreateNew = () => {
-    if (provider === "gitlab") {
-      renameCurrentFile(".gitlab-ci.yml");
-      setIsEditing(false);
-    } else {
-      setSelectedFile("");
-      setTempName("");
-      setIsEditing(true);
-    }
+    setSelectedFile("");
+    setTempName("");
+    setIsEditing(true);
   };
   const saveName = () => {
     let finalName = tempName.trim();
@@ -126,9 +120,7 @@ function EditorHeader({
             ) : (
               <span
                 className={`truncate flex-1 ${provider === "gitlab" ? "cursor-default" : "cursor-pointer select-none"}`}
-                onDoubleClick={
-                  provider === "gitlab" ? undefined : startRenaming
-                }
+                onDoubleClick={startRenaming}
                 title={selectedFile}
               >
                 {selectedFile}
@@ -137,12 +129,11 @@ function EditorHeader({
             {!isEditing && (
               <>
                 {" "}
-                {provider !== "gitlab" && (
                   <Pencil
                     onClick={startRenaming}
                     className="h-3.5 w-3.5 text-slate-500 hover:text-blue-400 cursor-pointer transition-colors"
                   />
-                )}{" "}
+                {" "}
                 {isCurrentFileDraft && (
                   <>
                     {" "}
