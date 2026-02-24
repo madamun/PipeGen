@@ -444,6 +444,7 @@ stages:
       name: "Dependency Cache",
       type: "group",
       uiConfig: {
+        description: "Cache dependencies (e.g. node_modules) to speed up later runs. GitHub uses actions/cache; GitLab uses built-in cache in the workflow. No repo secrets required.",
         fields: [
           {
             id: "enable_cache",
@@ -598,6 +599,7 @@ stages:
       name: "Security (SAST / audit)",
       type: "group",
       uiConfig: {
+        description: "Run security checks: npm audit (dependency audit), Trivy (container/files scan), or CodeQL (GitHub). No repo secrets needed for npm audit.",
         fields: [
           { id: "enable_security", label: "Run security checks", type: "switch", defaultValue: false },
           {
@@ -652,6 +654,9 @@ stages:
       name: "Coverage report",
       type: "group",
       uiConfig: {
+        description: "Upload test coverage to Codecov or Coveralls. The workflow uses a token from repo secrets/variables.",
+        secretsHelp: "Add your coverage token (e.g. CODECOV_TOKEN) in repo Settings → Secrets (GitHub) or CI/CD Variables (GitLab).",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
         fields: [
           { id: "enable_coverage", label: "Upload coverage", type: "switch", defaultValue: false },
           {
@@ -780,6 +785,9 @@ stages:
       name: "Docker Containerization",
       type: "group",
       uiConfig: {
+        description: "Build a Docker image and optionally push it to Docker Hub. Pushing requires Docker Hub credentials in repo secrets.",
+        secretsHelp: "If pushing to Docker Hub: add DOCKER_USERNAME and DOCKER_PASSWORD (or DOCKER_TOKEN) in repo Settings → Secrets / CI/CD Variables.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
         fields: [
           {
             id: "docker_build",
@@ -880,6 +888,9 @@ stages:
       name: "Deploy to Vercel",
       type: "group",
       uiConfig: {
+        description: "Deploy the built app to Vercel. The workflow uses the Vercel token (and optional org/project IDs) from repo secrets.",
+        secretsHelp: "Add VERCEL_TOKEN in repo Settings → Secrets. On GitHub you can also set VERCEL_ORG_ID and VERCEL_PROJECT_ID.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
         fields: [
           {
             id: "deploy_vercel",
@@ -944,6 +955,9 @@ stages:
       name: "Slack Notification",
       type: "group",
       uiConfig: {
+        description: "Send a notification to Slack when the job succeeds or fails, using an Incoming Webhook URL.",
+        secretsHelp: "Add your Slack webhook URL as a secret (e.g. SLACK_WEBHOOK_URL) in repo Settings → Secrets / CI/CD Variables.",
+        settingsPathByProvider: { github: "settings/secrets/actions", gitlab: "-/settings/ci_cd" },
         fields: [
           {
             id: "enable_slack",

@@ -16,7 +16,6 @@ import {
   FileCode,
   ShieldCheck,
   Bell,
-  Search,
 } from "lucide-react";
 import { Switch } from "../../../ui/switch";
 import { usePipeline } from "../../../workspace/PipelineProvider";
@@ -42,6 +41,7 @@ interface SetupSectionProps {
   >;
   isCollapsed?: boolean;
   setIsCollapsed?: (val: boolean) => void;
+  searchQuery: string;
 }
 
 export default function SetupSection({
@@ -49,12 +49,12 @@ export default function SetupSection({
   setCategoriesOpen,
   isCollapsed,
   setIsCollapsed,
+  searchQuery,
 }: SetupSectionProps) {
   const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({
     git: true,
     trigger: true,
   });
-  const [searchQuery, setSearchQuery] = useState("");
 
   const {
     categories,
@@ -63,6 +63,8 @@ export default function SetupSection({
     updateComponentValue,
     language,
     setLanguage,
+    selectedRepo,
+    provider,
   } = usePipeline();
 
   const toggleCategory = (id: string, currentOpen: boolean) => {
@@ -120,18 +122,6 @@ export default function SetupSection({
 
   return (
     <div className="w-full max-w-2xl space-y-4 px-1 pb-10">
-      <div className="sticky top-0 z-10 bg-[#02184B]/95 backdrop-blur py-2 -mx-1 px-1">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search components..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 rounded-lg bg-white/5 border border-white/10 text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30"
-          />
-        </div>
-      </div>
       {filteredCategories.length === 0 && q ? (
         <p className="text-slate-500 text-sm text-center py-6">
           No components match &quot;{searchQuery}&quot;
@@ -223,6 +213,32 @@ export default function SetupSection({
                         <div
                           className={`pl-6 flex flex-col gap-3 overflow-hidden transition-all duration-300 ${isOpen ? "max-h-[800px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}
                         >
+                          {isOpen && (comp.uiConfig?.description || comp.uiConfig?.secretsHelp || (selectedRepo?.full_name && comp.uiConfig?.settingsPathByProvider?.[provider])) && (
+                            <div className="mb-2 space-y-1.5 pb-2 border-b border-white/5">
+                              {comp.uiConfig?.description && (
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                  {comp.uiConfig.description}
+                                </p>
+                              )}
+                              {comp.uiConfig?.secretsHelp && (
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                  {comp.uiConfig.secretsHelp}
+                                </p>
+                              )}
+                              {selectedRepo?.full_name && comp.uiConfig?.settingsPathByProvider?.[provider] && (
+                                <a
+                                  href={provider === "github"
+                                    ? `https://github.com/${selectedRepo.full_name}/${comp.uiConfig.settingsPathByProvider.github}`
+                                    : `https://gitlab.com/${selectedRepo.full_name}/${comp.uiConfig.settingsPathByProvider.gitlab}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-300 hover:text-blue-200 hover:underline"
+                                >
+                                  {provider === "github" ? "Open repo Settings → Secrets" : "Open CI/CD settings"}
+                                </a>
+                              )}
+                            </div>
+                          )}
                           {comp.uiConfig?.fields?.map((field: any) => {
                             // Check Visibility
                             if (field.visibleIf) {
