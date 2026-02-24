@@ -62,6 +62,7 @@ export default function UserMenu() {
                 height={36}
                 sizes="36px"
                 className="h-full w-full object-cover"
+                unoptimized
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-slate-100 text-sm font-semibold">
@@ -86,6 +87,7 @@ export default function UserMenu() {
                   height={36}
                   sizes="36px"
                   className="h-full w-full object-cover"
+                  unoptimized
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950 text-slate-100 text-xs font-semibold">
@@ -159,6 +161,7 @@ export default function UserMenu() {
                     height={80}
                     sizes="80px"
                     className="h-full w-full object-cover"
+                    unoptimized
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-slate-800 text-2xl font-bold">
