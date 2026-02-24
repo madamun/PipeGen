@@ -161,7 +161,7 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
               <GridSkeleton />
             ) : (
               <>
-                <TabsContent value="my" className="m-0 mt-0">
+                <TabsContent value="my" className=" m-1 mt-1">
                   <RepoGrid repos={my} onPick={pick} />
                 </TabsContent>
                 <TabsContent value="co" className="m-0 mt-0">

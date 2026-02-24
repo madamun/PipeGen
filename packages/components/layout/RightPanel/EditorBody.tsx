@@ -130,9 +130,12 @@ export default function EditorBody({ fontSize, isDiffMode, onValidationChange }:
 
   if (!selectedFile) {
     return (
-      <div className="h-full w-full bg-[#010819] flex flex-col items-center justify-center text-slate-500 select-none">
+      <div className="h-full w-full bg-[#010819] flex flex-col items-center justify-center text-slate-500 select-none px-4">
         <div className="text-4xl mb-4 opacity-30 grayscale">🚀</div>
         <p className="text-sm font-medium">No file selected</p>
+        <p className="text-xs text-slate-600 mt-1 text-center max-w-xs">
+          Create a new file (+) or open one from the list (folder icon).
+        </p>
       </div>
     );
   }
@@ -172,11 +175,11 @@ export default function EditorBody({ fontSize, isDiffMode, onValidationChange }:
       {isDiffMode && (
         <div className="grid grid-cols-2 h-9 border-b border-white/10 text-xs font-mono select-none z-10 shrink-0">
           <div className="flex items-center justify-center px-4 text-slate-400 bg-[#0f1e30] border-r border-white/10">
-            <span className="opacity-70">Older Version (Git)</span>
+            <span className="opacity-70">Saved version</span>
           </div>
           <div className="flex items-center justify-center px-4 text-white bg-blue-600 border-l border-white/5">
             <div className="flex items-center gap-2">
-              <span>{selectedBranch || "Current"} (Modified)</span>
+              <span>Your changes</span>
             </div>
           </div>
         </div>

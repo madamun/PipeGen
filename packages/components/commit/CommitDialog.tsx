@@ -428,7 +428,7 @@ export default function CommitDialog(props: Props) {
               </pre>
             </div>
             <p className="text-xs text-slate-400">
-              You can review changes in Diff mode in the editor on the right.
+              Review changes using Diff in the editor.
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <Button

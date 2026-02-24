@@ -19,7 +19,7 @@ export default function TopbarActions() {
           <>
             {/* แสดง Icon หมุนๆ ตอนโหลด */}
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Scanning Repo...
+            Analyzing repository...
           </>
         ) : (
           <>

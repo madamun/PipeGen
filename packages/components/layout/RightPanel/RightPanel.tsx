@@ -149,11 +149,12 @@ function EditorHeader({
                     {provider !== "gitlab" && (
                       <div className="w-px h-3 bg-white/10 mx-1"></div>
                     )}{" "}
-                    <Trash2
-                      onClick={discardDraft}
-                      className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
-                      // title="Discard changes"
-                    />{" "}
+                    <span title="Discard this draft">
+                      <Trash2
+                        onClick={discardDraft}
+                        className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
+                      />
+                    </span>{" "}
                   </>
                 )}{" "}
               </>
@@ -202,8 +203,9 @@ function EditorHeader({
                 <Github className="w-3 h-3" /> Repository Files
               </DropdownMenuLabel>
               {gitFileList.length === 0 ? (
-                <div className="px-6 py-2 text-xs text-slate-500 italic">
-                  No other files found
+                <div className="px-6 py-2 text-xs text-slate-500 italic space-y-0.5">
+                  <p>No workflow files yet.</p>
+                  <p className="text-slate-600">Use + to create a new file.</p>
                 </div>
               ) : (
                 gitFileList.map((f) => (
