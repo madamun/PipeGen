@@ -337,6 +337,106 @@ stages:
     },
   });
 
+  // Go
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Go",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "use_go", label: "Enable Go", type: "switch", defaultValue: false },
+          {
+            id: "go_version",
+            label: "Go Version",
+            type: "select",
+            defaultValue: "1.21",
+            visibleIf: { fieldId: "use_go", value: true },
+            options: [
+              { label: "1.22", value: "1.22" },
+              { label: "1.21", value: "1.21" },
+              { label: "1.20", value: "1.20" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '{{go_version}}'
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test -v ./...`,
+          },
+          {
+            platform: "gitlab",
+            template: `setup_go:
+  stage: setup
+  image: golang:{{go_version}}
+  script:
+    - go build -v ./...
+    - go test -v ./...`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Rust
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catRuntime.id,
+      name: "Rust",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "use_rust", label: "Enable Rust", type: "switch", defaultValue: false },
+          {
+            id: "rust_version",
+            label: "Rust Version",
+            type: "select",
+            defaultValue: "stable",
+            visibleIf: { fieldId: "use_rust", value: true },
+            options: [
+              { label: "stable", value: "stable" },
+              { label: "1.75", value: "1.75" },
+              { label: "1.70", value: "1.70" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: {{rust_version}}
+      - name: Build
+        run: cargo build --release
+      - name: Test
+        run: cargo test`,
+          },
+          {
+            platform: "gitlab",
+            template: `setup_rust:
+  stage: setup
+  image: rust:{{rust_version}}
+  script:
+    - cargo build --release
+    - cargo test`,
+          },
+        ],
+      },
+    },
+  });
+
   // Dependency Cache (GitHub: actions/cache; GitLab: cache in default workflow)
   await prisma.pipelineComponent.create({
     data: {
@@ -485,6 +585,124 @@ stages:
   image: node:{{node_version}}
   script:
     - {{lint_cmd}}`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Security / SAST
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catQuality.id,
+      name: "Security (SAST / audit)",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "enable_security", label: "Run security checks", type: "switch", defaultValue: false },
+          {
+            id: "security_tool",
+            label: "Tool",
+            type: "select",
+            defaultValue: "npm_audit",
+            visibleIf: { fieldId: "enable_security", value: true },
+            options: [
+              { label: "npm audit", value: "npm_audit" },
+              { label: "Trivy (container/files)", value: "trivy" },
+              { label: "CodeQL (GitHub)", value: "codeql" },
+            ],
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Security check
+        run: |
+          case "{{security_tool}}" in
+            npm_audit) npm audit --audit-level=high ;;
+            trivy) docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$PWD:/src aquasec/trivy fs --exit-code 1 /src ;;
+            codeql) echo "Add CodeQL action step manually if needed" ;;
+            *) npm audit --audit-level=high ;;
+          esac`,
+          },
+          {
+            platform: "gitlab",
+            template: `security_job:
+  stage: test
+  image: node:{{node_version}}
+  script:
+    - |
+      case "{{security_tool}}" in
+        npm_audit) npm audit --audit-level=high ;;
+        trivy) docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PWD:/src aquasec/trivy fs --exit-code 1 /src ;;
+        *) npm audit --audit-level=high ;;
+      esac`,
+          },
+        ],
+      },
+    },
+  });
+
+  // Coverage (Codecov / Coveralls)
+  await prisma.pipelineComponent.create({
+    data: {
+      categoryId: catQuality.id,
+      name: "Coverage report",
+      type: "group",
+      uiConfig: {
+        fields: [
+          { id: "enable_coverage", label: "Upload coverage", type: "switch", defaultValue: false },
+          {
+            id: "coverage_provider",
+            label: "Provider",
+            type: "select",
+            defaultValue: "codecov",
+            visibleIf: { fieldId: "enable_coverage", value: true },
+            options: [
+              { label: "Codecov", value: "codecov" },
+              { label: "Coveralls", value: "coveralls" },
+            ],
+          },
+          {
+            id: "coverage_token_secret",
+            label: "Token secret name",
+            type: "input",
+            defaultValue: "CODECOV_TOKEN",
+            visibleIf: { fieldId: "enable_coverage", value: true },
+            placeholder: "CODECOV_TOKEN",
+          },
+        ],
+      },
+      syntaxes: {
+        create: [
+          {
+            platform: "github",
+            template: `      - name: Upload coverage
+        if: {{coverage_provider}} == 'codecov'
+        uses: codecov/codecov-action@v4
+        with:
+          token: \${{ secrets.CODECOV_TOKEN }}
+      - name: Upload to Coveralls
+        if: {{coverage_provider}} == 'coveralls'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: \${{ secrets.GITHUB_TOKEN }}`,
+          },
+          {
+            platform: "gitlab",
+            template: `coverage_job:
+  stage: test
+  image: node:{{node_version}}
+  script:
+    - npm test -- --coverage
+  coverage: '/All files[^|]*\\|\\s*([\\d.]+)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml`,
           },
         ],
       },
