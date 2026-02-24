@@ -23,6 +23,7 @@ import {
   generateYamlFromValues,
   parseYamlToUI,
 } from "../../lib/pipelineEngine";
+import { toast } from "sonner";
 
 const PipelineContext = createContext<PipelineContextType | undefined>(
   undefined,
@@ -491,12 +492,20 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         setFileContent(
           generateYamlFromValues(categories, newValues, syntaxProvider, ""),
         );
-        alert(
-          `✅ Auto Setup Complete!\nDetected: ${data.config.use_node ? "Node.js" : ""} ${data.config.docker_build ? "Docker" : ""}`,
+        const detected: string[] = [];
+        if (data.config.use_node) detected.push("Node.js");
+        if (data.config.use_python) detected.push("Python");
+        if (data.config.use_go) detected.push("Go");
+        if (data.config.use_rust) detected.push("Rust");
+        if (data.config.docker_build) detected.push("Docker");
+        toast.success(
+          detected.length
+            ? `Auto Setup complete. Detected: ${detected.join(", ")}`
+            : "Auto Setup complete.",
         );
       }
     } catch (e) {
-      alert("❌ Auto setup failed. Please configure manually.");
+      toast.error("Auto setup failed. Please configure manually.");
     } finally {
       setIsLoadingOther(false);
     }

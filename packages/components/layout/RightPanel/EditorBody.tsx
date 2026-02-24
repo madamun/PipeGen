@@ -11,9 +11,10 @@ import { Loader2, AlertCircle } from "lucide-react";
 interface EditorBodyProps {
   fontSize: number;
   isDiffMode: boolean;
+  onValidationChange?: (errors: YamlValidationError[]) => void;
 }
 
-export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
+export default function EditorBody({ fontSize, isDiffMode, onValidationChange }: EditorBodyProps) {
   const {
     fileContent,
     setFileContent,
@@ -49,6 +50,10 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
     const t = setTimeout(() => setEditorErrors(validateYaml(doc)), 300);
     return () => clearTimeout(t);
   }, [doc, isDiffMode]);
+
+  useEffect(() => {
+    onValidationChange?.(editorErrors);
+  }, [editorErrors, onValidationChange]);
 
   useEffect(() => {
     if (isDiffMode || !monacoRef.current || !editorRef.current) return;

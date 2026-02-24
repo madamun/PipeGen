@@ -23,6 +23,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { usePipeline } from "../workspace/PipelineProvider";
 import { GitBranch, GitPullRequest, UploadCloud, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 type Mode = "pull_request" | "push";
 
@@ -157,16 +158,23 @@ export default function CommitDialog(props: Props) {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data?.error || "Commit failed");
+        toast.error(data?.error || "Commit failed");
         return;
       }
 
-      // เปิดลิงก์ PR/MR หรือ Commit
-      if (data?.html_url) window.open(data.html_url, "_blank");
+      const url = data?.html_url as string | undefined;
+      if (url) window.open(url, "_blank");
+
+      toast.success(mode === "pull_request" ? "Pull request created" : "Changes pushed", {
+        description: url ? "Open in new tab to view." : undefined,
+        action: url
+          ? { label: "Open", onClick: () => window.open(url, "_blank") }
+          : undefined,
+      });
 
       setOpen(false);
     } catch {
-      alert("Something went wrong");
+      toast.error("Something went wrong");
     } finally {
       setIsSubmitting(false);
     }

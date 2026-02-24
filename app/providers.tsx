@@ -1,6 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,6 +17,7 @@ export default function Providers({
   return (
     <QueryClientProvider client={queryClient}>
       {children}
+      <Toaster richColors position="top-center" closeButton />
     </QueryClientProvider>
   );
 }

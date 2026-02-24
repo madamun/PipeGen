@@ -16,6 +16,7 @@ import {
   FileCode,
   ShieldCheck,
   Bell,
+  Search,
 } from "lucide-react";
 import { Switch } from "../../../ui/switch";
 import { usePipeline } from "../../../workspace/PipelineProvider";
@@ -53,6 +54,7 @@ export default function SetupSection({
     git: true,
     trigger: true,
   });
+  const [searchQuery, setSearchQuery] = useState("");
 
   const {
     categories,
@@ -70,6 +72,20 @@ export default function SetupSection({
   const toggleSection = (key: string, currentOpen: boolean) => {
     setSectionsOpen((prev) => ({ ...prev, [key]: !currentOpen }));
   };
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredCategories = q
+    ? categories
+        .map((cat) => ({
+          ...cat,
+          components: cat.components.filter(
+            (comp) =>
+              cat.name.toLowerCase().includes(q) ||
+              comp.name.toLowerCase().includes(q),
+          ),
+        }))
+        .filter((cat) => cat.components.length > 0)
+    : categories;
 
   if (categories.length === 0)
     return (
@@ -104,7 +120,24 @@ export default function SetupSection({
 
   return (
     <div className="w-full max-w-2xl space-y-4 px-1 pb-10">
-      {categories.map((cat) => {
+      <div className="sticky top-0 z-10 bg-[#02184B]/95 backdrop-blur py-2 -mx-1 px-1">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search components..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-9 pl-8 pr-3 rounded-lg bg-white/5 border border-white/10 text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30"
+          />
+        </div>
+      </div>
+      {filteredCategories.length === 0 && q ? (
+        <p className="text-slate-500 text-sm text-center py-6">
+          No components match &quot;{searchQuery}&quot;
+        </p>
+      ) : null}
+      {filteredCategories.map((cat) => {
         const Icon = IconMap[cat.icon || "Default"] || IconMap.Default;
         const isCatOpen = categoriesOpen[cat.id] ?? false;
 
