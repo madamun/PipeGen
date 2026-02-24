@@ -40,7 +40,23 @@ export async function GET(req: NextRequest) {
   };
   const url = `https://api.github.com/repos/${fullName}/branches?per_page=100`;
   const res = await fetch(url, { headers: ghHeaders });
-  const branches: GhBranch[] = await res.json();
+  const text = await res.text();
+
+  if (!res.ok) {
+    let errorMessage = "Cannot list branches";
+    try {
+      const parsed = JSON.parse(text) as { message?: string };
+      if (parsed?.message) errorMessage = parsed.message;
+    } catch {
+      // use default
+    }
+    return Response.json(
+      { error: errorMessage, detail: text.slice(0, 300) },
+      { status: res.status },
+    );
+  }
+
+  const branches: GhBranch[] = JSON.parse(text);
   const names = branches.map((b) => ({
     name: b.name,
     protected: !!b.protected,

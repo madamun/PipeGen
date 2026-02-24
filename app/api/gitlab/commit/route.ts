@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 type Body = {
   full_name: string; // "namespace/project"
-  baseBranch: string; // "main"
+  baseBranch: string; // "main" (used as base when creating new branch)
+  branch: string; // target branch (existing = update, new = create then commit)
   mode: "push" | "pull_request";
   title: string;
   message: string;
@@ -16,16 +17,32 @@ type Body = {
   content: string; // file content (YAML string)
 };
 
+const VALID_BRANCH_REGEX = /^[a-zA-Z0-9/_.-]+$/;
+function isValidBranchName(name: string): boolean {
+  const t = name.trim();
+  return t.length > 0 && t.length <= 200 && VALID_BRANCH_REGEX.test(t);
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as Body;
-  const { full_name, baseBranch, mode, title, message, path, content } = body;
+  const { full_name, baseBranch, branch: targetBranch, mode, title, message, path, content } = body;
 
   if (!full_name || !baseBranch || !path || !content) {
     return Response.json({ error: "Missing fields" }, { status: 400 });
+  }
+  const branch = (targetBranch || baseBranch).trim();
+  if (!branch) {
+    return Response.json({ error: "Branch name is required" }, { status: 400 });
+  }
+  if (!isValidBranchName(branch)) {
+    return Response.json(
+      { error: "Branch name can only use letters, numbers, /, -, _, and ." },
+      { status: 400 },
+    );
   }
 
   // 1. ดึง Token GitLab
@@ -42,24 +59,57 @@ export async function POST(req: NextRequest) {
   const encodedPath = encodeURIComponent(path); // GitLab ต้อง Encode path เสมอ
 
   try {
-    // 2. เช็คว่าไฟล์มีอยู่แล้วไหม? (เพื่อเลือก action: create หรือ update)
+    // 2. Push mode: targetBranch = branch; create branch if it doesn't exist
+    let targetBranch = branch;
+    if (mode === "push") {
+      const branchCheckRes = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodedId}/repository/branches/${encodeURIComponent(branch)}`,
+        { method: "HEAD", headers: { Authorization: `Bearer ${account.accessToken}` } },
+      );
+      if (!branchCheckRes.ok) {
+        // branch doesn't exist -> create from baseBranch
+        const createBranchRes = await fetch(
+          `https://gitlab.com/api/v4/projects/${encodedId}/repository/branches`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${account.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ branch, ref: baseBranch }),
+          },
+        );
+        if (!createBranchRes.ok) {
+          const errText = await createBranchRes.text();
+          let msg = "Failed to create new branch.";
+          try {
+            const err = JSON.parse(errText);
+            if (err.message?.includes("already exists") || err.error?.includes("exists")) {
+              msg = "Branch already exists. Choose another name.";
+            } else {
+              msg = err.message || err.error || msg;
+            }
+          } catch {
+            if (errText.includes("already exists")) msg = "Branch already exists. Choose another name.";
+          }
+          throw new Error(msg);
+        }
+      }
+    }
+
+    // 3. Check if file exists (for action: create vs update). Push: check target branch; PR: check base.
     let action = "create";
+    const refForFileCheck = mode === "push" ? targetBranch : baseBranch;
     const checkRes = await fetch(
-      `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}?ref=${baseBranch}`,
+      `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}?ref=${refForFileCheck}`,
       {
         method: "HEAD",
         headers: { Authorization: `Bearer ${account.accessToken}` },
       },
     );
-
     if (checkRes.ok) action = "update";
 
-    // 3. เตรียม Payload
-    // GitLab Commits API รับ actions เป็น array (เผื่อแก้หลายไฟล์พร้อมกัน)
-    // แต่เราแก้ไฟล์เดียว
-    let targetBranch = baseBranch;
-
-    // ถ้าเป็นโหมด Pull Request (Merge Request) เราต้องสร้าง Branch ใหม่ก่อน
+    // 4. Pull Request mode: create temp branch then MR
     if (mode === "pull_request") {
       // ✅ สร้างวันที่แบบอ่านง่าย (YYYYMMDD-HHmm)
       const now = new Date();

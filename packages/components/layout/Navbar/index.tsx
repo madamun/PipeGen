@@ -18,6 +18,7 @@ function Logo() {
         width={40}
         height={40}
         priority
+        unoptimized
       />
       <span className="bg-gradient-to-r from-[#E6EDFE] to-[#83A7FC] bg-clip-text text-2xl font-semibold text-transparent">
         Pipe Gen

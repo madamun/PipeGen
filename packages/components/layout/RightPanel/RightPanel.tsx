@@ -149,11 +149,12 @@ function EditorHeader({
                     {provider !== "gitlab" && (
                       <div className="w-px h-3 bg-white/10 mx-1"></div>
                     )}{" "}
-                    <Trash2
-                      onClick={discardDraft}
-                      className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
-                      title="Discard changes"
-                    />{" "}
+                    <span title="Discard this draft">
+                      <Trash2
+                        onClick={discardDraft}
+                        className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
+                      />
+                    </span>{" "}
                   </>
                 )}{" "}
               </>
@@ -164,12 +165,13 @@ function EditorHeader({
         <div className="flex items-center gap-1 pb-1">
           <button
             onClick={handleCreateNew}
+            aria-label="Create new file"
             className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-blue-300 transition-all text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
           >
             <Plus className="h-4 w-4" />
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
+            <DropdownMenuTrigger aria-label="Open file list" className="h-7 w-7 grid place-items-center rounded-md bg-white/5 hover:bg-white/10 hover:text-yellow-300 transition-all text-slate-400 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
               <FolderOpen className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -201,8 +203,9 @@ function EditorHeader({
                 <Github className="w-3 h-3" /> Repository Files
               </DropdownMenuLabel>
               {gitFileList.length === 0 ? (
-                <div className="px-6 py-2 text-xs text-slate-500 italic">
-                  No other files found
+                <div className="px-6 py-2 text-xs text-slate-500 italic space-y-0.5">
+                  <p>No workflow files yet.</p>
+                  <p className="text-slate-600">Use + to create a new file.</p>
                 </div>
               ) : (
                 gitFileList.map((f) => (
@@ -239,10 +242,35 @@ export default function RightPanel() {
   const [fontSize, setFontSize] = React.useState(13);
   const [isDiffMode, setIsDiffMode] = React.useState(false);
   const [commitOpen, setCommitOpen] = React.useState(false);
+  const [hasYamlErrors, setHasYamlErrors] = React.useState(false);
   const { selectedRepo, selectedFile, fileContent } = usePipeline();
 
   const showCommitButton = !!selectedRepo?.full_name && !!selectedFile;
-  const commitDisabled = !fileContent?.trim();
+  const commitDisabled = !fileContent?.trim() || hasYamlErrors;
+
+  const commitTitle = !fileContent?.trim()
+    ? "Select a repository and a file to commit"
+    : hasYamlErrors
+      ? "Fix YAML errors in the editor before committing"
+      : "Commit";
+
+  if (!selectedRepo) {
+    return (
+      <section className="flex flex-col mr-6 flex-1 rounded-2xl shadow-[2px_4px_8px_rgba(0,0,0,0.30)] bg-[#02184B] h-[595px] max-h-screen overflow-hidden relative z-0 flex items-center justify-center">
+        <div className="text-center px-6 max-w-sm">
+          <div className="text-5xl mb-4 opacity-40 grayscale">📋</div>
+          <h2 className="text-lg font-semibold text-slate-200 mb-2">
+            Select a repository
+          </h2>
+          <p className="text-sm text-slate-400">
+            Use the repository dropdown at the top to choose a repo. Then pick a
+            branch and create or edit your pipeline. Try &quot;Auto Setup&quot; to
+            generate a pipeline from your project.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col mr-6 flex-1 rounded-2xl shadow-[2px_4px_8px_rgba(0,0,0,0.30)] bg-[#02184B] h-[595px] max-h-screen overflow-hidden relative z-0">
@@ -253,16 +281,16 @@ export default function RightPanel() {
         setIsDiffMode={setIsDiffMode}
       />
       <div className="flex-1 bg-[#010819] overflow-auto relative">
-        <EditorBody fontSize={fontSize} isDiffMode={isDiffMode} />
+        <EditorBody
+          fontSize={fontSize}
+          isDiffMode={isDiffMode}
+          onValidationChange={(errors) => setHasYamlErrors(errors.length > 0)}
+        />
         {showCommitButton && (
           <Button
             onClick={() => setCommitOpen(true)}
             disabled={commitDisabled}
-            title={
-              commitDisabled
-                ? "Select a repository and a file to commit"
-                : "Commit"
-            }
+            title={commitTitle}
             className="absolute bottom-4 right-4 z-10 h-9 rounded-lg bg-[#3b82f6] px-4 shadow-md hover:bg-[#2f6ad6] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
           >
             Commit

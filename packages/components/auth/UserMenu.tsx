@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../ui/dialog";
+import Image from "next/image";
 
 export default function UserMenu() {
   const { data } = authClient.useSession();
@@ -54,11 +55,14 @@ export default function UserMenu() {
             className="h-9 w-9 overflow-hidden rounded-full border border-white/10 ring-0 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all hover:scale-105 shadow-sm"
           >
             {user.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={user.image}
                 alt={user.name ?? "User"}
+                width={36}
+                height={36}
+                sizes="36px"
                 className="h-full w-full object-cover"
+                unoptimized
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-slate-100 text-sm font-semibold">
@@ -76,11 +80,14 @@ export default function UserMenu() {
           <DropdownMenuLabel className="flex items-center gap-3 px-3 py-2.5 font-normal">
             <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-700 shrink-0 shadow-inner">
               {user.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={user.image}
                   alt="Profile"
+                  width={36}
+                  height={36}
+                  sizes="36px"
                   className="h-full w-full object-cover"
+                  unoptimized
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950 text-slate-100 text-xs font-semibold">
@@ -147,7 +154,15 @@ export default function UserMenu() {
             <div className="flex items-center gap-5 border-b border-white/10 pb-6">
               <div className="h-20 w-20 overflow-hidden rounded-full border-2 border-slate-600 shadow-inner shrink-0">
                 {user.image ? (
-                  <img src={user.image} alt="Profile" className="h-full w-full object-cover" />
+                  <Image
+                    src={user.image}
+                    alt="Profile"
+                    width={80}
+                    height={80}
+                    sizes="80px"
+                    className="h-full w-full object-cover"
+                    unoptimized
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-slate-800 text-2xl font-bold">
                     {initials}

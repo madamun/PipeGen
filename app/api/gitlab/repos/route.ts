@@ -36,8 +36,16 @@ export async function GET(req: NextRequest) {
   );
 
   if (!glRes.ok) {
+    const errorText = await glRes.text();
+    let errorMessage = "GitLab API Error";
+    try {
+      const parsed = JSON.parse(errorText) as { message?: string; error?: string };
+      errorMessage = parsed.message || parsed.error || errorMessage;
+    } catch {
+      if (errorText) errorMessage = errorText.slice(0, 200);
+    }
     return Response.json(
-      { error: "GitLab API Error" },
+      { error: errorMessage, detail: errorText.slice(0, 300) },
       { status: glRes.status },
     );
   }

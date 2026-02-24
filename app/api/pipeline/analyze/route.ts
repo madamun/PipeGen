@@ -46,6 +46,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ config });
   } catch (error) {
     console.error("Pipeline analyze error:", error);
-    return NextResponse.json({ error: "Analysis failed" }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : "Analysis failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

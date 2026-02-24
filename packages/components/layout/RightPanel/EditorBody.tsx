@@ -11,9 +11,10 @@ import { Loader2, AlertCircle } from "lucide-react";
 interface EditorBodyProps {
   fontSize: number;
   isDiffMode: boolean;
+  onValidationChange?: (errors: YamlValidationError[]) => void;
 }
 
-export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
+export default function EditorBody({ fontSize, isDiffMode, onValidationChange }: EditorBodyProps) {
   const {
     fileContent,
     setFileContent,
@@ -49,6 +50,10 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
     const t = setTimeout(() => setEditorErrors(validateYaml(doc)), 300);
     return () => clearTimeout(t);
   }, [doc, isDiffMode]);
+
+  useEffect(() => {
+    onValidationChange?.(editorErrors);
+  }, [editorErrors, onValidationChange]);
 
   useEffect(() => {
     if (isDiffMode || !monacoRef.current || !editorRef.current) return;
@@ -125,15 +130,18 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
 
   if (!selectedFile) {
     return (
-      <div className="h-full w-full bg-[#1e1e1e] flex flex-col items-center justify-center text-slate-500 select-none">
+      <div className="h-full w-full bg-[#010819] flex flex-col items-center justify-center text-slate-500 select-none px-4">
         <div className="text-4xl mb-4 opacity-30 grayscale">🚀</div>
         <p className="text-sm font-medium">No file selected</p>
+        <p className="text-xs text-slate-600 mt-1 text-center max-w-xs">
+          Create a new file (+) or open one from the list (folder icon).
+        </p>
       </div>
     );
   }
 
   const LoadingOverlay = () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e] z-20">
+    <div className="absolute inset-0 flex items-center justify-center bg-[#010819] z-20">
       <div className="flex flex-col items-center gap-2">
         <Loader2 className="animate-spin text-blue-500 h-6 w-6" />
         <span className="text-xs text-slate-500">Loading Editor...</span>
@@ -167,11 +175,11 @@ export default function EditorBody({ fontSize, isDiffMode }: EditorBodyProps) {
       {isDiffMode && (
         <div className="grid grid-cols-2 h-9 border-b border-white/10 text-xs font-mono select-none z-10 shrink-0">
           <div className="flex items-center justify-center px-4 text-slate-400 bg-[#0f1e30] border-r border-white/10">
-            <span className="opacity-70">Older Version (Git)</span>
+            <span className="opacity-70">Saved version</span>
           </div>
           <div className="flex items-center justify-center px-4 text-white bg-blue-600 border-l border-white/5">
             <div className="flex items-center gap-2">
-              <span>{selectedBranch || "Current"} (Modified)</span>
+              <span>Your changes</span>
             </div>
           </div>
         </div>

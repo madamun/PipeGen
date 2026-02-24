@@ -3,7 +3,7 @@
  * Used by POST /api/pipeline/analyze.
  */
 
-import type { ComponentValues } from "@/packages/types/pipeline";
+import type { ComponentValues } from "../types/pipeline";
 
 export interface AnalyzeRepoParams {
   repoFullName: string;
@@ -15,6 +15,8 @@ export interface AnalyzeRepoParams {
 export interface AnalyzedConfig extends ComponentValues {
   use_node?: boolean;
   use_python?: boolean;
+  use_go?: boolean;
+  use_rust?: boolean;
   docker_build?: boolean;
   docker_tag?: string;
   run_tests?: boolean;
@@ -23,6 +25,8 @@ export interface AnalyzedConfig extends ComponentValues {
   node_version?: string;
   pkg_manager?: string;
   py_version?: string;
+  go_version?: string;
+  rust_version?: string;
   pipeline_name?: string;
   enable_push?: boolean;
   push_branches?: string[];
@@ -37,12 +41,16 @@ export interface AnalyzedConfig extends ComponentValues {
 const DEFAULT_CONFIG: AnalyzedConfig = {
   use_node: false,
   use_python: false,
+  use_go: false,
+  use_rust: false,
   docker_build: false,
   run_tests: false,
   run_build: false,
   node_version: "18",
   pkg_manager: "npm",
   py_version: "3.9",
+  go_version: "1.21",
+  rust_version: "stable",
   pipeline_name: "Auto-Generated-Pipeline",
   enable_push: true,
   enable_pr: true,
