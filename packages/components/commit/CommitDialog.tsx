@@ -13,19 +13,19 @@ import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "../ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { usePipeline } from "../workspace/PipelineProvider";
-import { GitBranch, GitPullRequest, UploadCloud, Sparkles } from "lucide-react";
+import { ChevronDown, GitBranch, GitPullRequest, UploadCloud, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 type Mode = "pull_request" | "push";
+
+const VALID_BRANCH_REGEX = /^[a-zA-Z0-9/_.-]+$/;
+function isValidBranchName(name: string): boolean {
+  const t = name.trim();
+  return t.length > 0 && t.length <= 200 && VALID_BRANCH_REGEX.test(t);
+}
 
 type Props = { open?: boolean; onOpenChange?: (v: boolean) => void };
 
@@ -45,6 +45,7 @@ export default function CommitDialog(props: Props) {
   const [mode, setMode] = React.useState<Mode>("push");
 
   const [branch, setBranch] = React.useState<string>("main");
+  const [branchDropdownOpen, setBranchDropdownOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [step, setStep] = React.useState<"form" | "preview">("form");
 
@@ -61,7 +62,12 @@ export default function CommitDialog(props: Props) {
     }
   }, [selectedFile, provider]);
 
-  const { data: branchNames = [], isLoading: loadingBranches } = useQuery({
+  const {
+    data: branchNames = [],
+    isLoading: loadingBranches,
+    isError: isErrorBranches,
+    error: errorBranches,
+  } = useQuery({
     queryKey: ["branches", selectedRepo?.full_name, provider],
     queryFn: async () => {
       if (!selectedRepo?.full_name) return [];
@@ -74,7 +80,7 @@ export default function CommitDialog(props: Props) {
         { cache: "no-store", credentials: "include" },
       );
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load branches");
+      if (!res.ok) throw new Error((data as { error?: string })?.error || "Failed to load branches");
       return (data.branches || []).map((b: { name: string }) => b.name) as string[];
     },
     enabled: open && !!selectedRepo?.full_name,
@@ -82,24 +88,17 @@ export default function CommitDialog(props: Props) {
 
   React.useEffect(() => {
     if (!open) return;
-    setBranch(selectedBranch || selectedRepo?.default_branch || "main");
-  }, [open, selectedBranch, selectedRepo?.default_branch]);
+    const pref = selectedBranch || selectedRepo?.default_branch || "main";
+    setBranch(branchNames.includes(pref) ? pref : branchNames[0] || "main");
+  }, [open, selectedBranch, selectedRepo?.default_branch, branchNames]);
 
-  React.useEffect(() => {
-    if (!open || !branchNames.length) return;
-    if (!branchNames.includes(selectedBranch || "")) {
-      const pref =
-        (selectedRepo?.default_branch &&
-          branchNames.includes(selectedRepo.default_branch) &&
-          selectedRepo.default_branch) ||
-        (branchNames.includes("main") ? "main" : branchNames[0] || "main");
-      setBranch(pref);
-    }
-  }, [open, branchNames, selectedBranch, selectedRepo?.default_branch]);
-
-  const selectValue = branchNames.includes(branch) ? branch : undefined;
-
-  const disabled = !selectedRepo?.full_name || !fileContent?.trim();
+  const branchValid =
+    branch.trim() !== "" &&
+    (branchNames.includes(branch) || isValidBranchName(branch));
+  const disabled =
+    !selectedRepo?.full_name ||
+    !fileContent?.trim() ||
+    !branchValid;
 
   const displayFileName = selectedFile || (provider === "gitlab" ? ".gitlab-ci.yml" : "workflow");
 
@@ -120,7 +119,10 @@ export default function CommitDialog(props: Props) {
 
   const handleOpenChange = React.useCallback(
     (next: boolean) => {
-      if (!next) setStep("form");
+      if (!next) {
+        setStep("form");
+        setBranchDropdownOpen(false);
+      }
       setOpen(next);
     },
     [setOpen],
@@ -138,34 +140,40 @@ export default function CommitDialog(props: Props) {
       const endpoint =
         provider === "gitlab" ? `/api/gitlab/commit` : `/api/github/commit`;
 
+      const baseBranch =
+        selectedRepo?.default_branch || "main";
       const res = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: selectedRepo!.full_name, // GitLab ต้องการ namespace/project
-          repoFullName: selectedRepo!.full_name, // (เผื่อ API เก่าใช้ชื่อนี้)
-          baseBranch: branch || "main",
-          branch: branch || "main", // (เผื่อ API เก่าใช้ชื่อนี้)
+          full_name: selectedRepo!.full_name,
+          repoFullName: selectedRepo!.full_name,
+          baseBranch,
+          branch: branch.trim() || baseBranch,
           mode,
           title: title || `Update ${selectedFile}`,
           message: message || `Update ${selectedFile} via PipeGen`,
-          path: targetPath, // ✅ ส่ง Path ที่ถูกต้องไป
-          filePath: targetPath, // (เผื่อ API เก่าใช้ชื่อนี้)
+          path: targetPath,
+          filePath: targetPath,
           content: fileContent,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data?.error || "Commit failed");
+        const msg = (data as { error?: string })?.error || res.statusText || "Commit failed";
+        const detail = (data as { detail?: string })?.detail;
+        toast.error(msg, detail ? { description: detail } : undefined);
         return;
       }
 
       const url = data?.html_url as string | undefined;
       if (url) window.open(url, "_blank");
 
-      toast.success(mode === "pull_request" ? "Pull request created" : "Changes pushed", {
+      const successMsg =
+        mode === "pull_request" ? "Pull request created" : "Changes pushed";
+      toast.success(successMsg, {
         description: url ? "Open in new tab to view." : undefined,
         action: url
           ? { label: "Open", onClick: () => window.open(url, "_blank") }
@@ -173,8 +181,8 @@ export default function CommitDialog(props: Props) {
       });
 
       setOpen(false);
-    } catch {
-      toast.error("Something went wrong");
+    } catch (err) {
+      toast.error((err as Error)?.message || "Network or server error");
     } finally {
       setIsSubmitting(false);
     }
@@ -226,29 +234,70 @@ export default function CommitDialog(props: Props) {
             Target: <span className="text-green-300">{targetPath}</span>
           </div>
 
-          {/* Branch Select */}
+          {/* Branch: input (type) + button (open dropdown to select) */}
           <div className="space-y-2">
-            <Label className="text-slate-200">Branch :</Label>
-            <Select
-              value={selectValue}
-              onValueChange={setBranch}
-              disabled={loadingBranches || branchNames.length === 0}
-            >
-              <SelectTrigger aria-label="Choose branch" className="bg-black/30 border-white/10 min-w-28">
-                <SelectValue
-                  placeholder={
-                    loadingBranches ? "Loading branches..." : "Select a branch"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent className="bg-[#0f1e50] text-white border border-white/20">
-                {branchNames.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-slate-200">Branch</Label>
+            <div className="flex rounded-md border border-white/20 bg-[#0f1e50] overflow-hidden">
+              <Input
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                placeholder={loadingBranches ? "Loading..." : "Type branch name or select below"}
+                disabled={loadingBranches}
+                className="rounded-none border-0 border-r border-white/20 bg-transparent text-white font-mono focus-visible:ring-0 focus-visible:ring-offset-0"
+                aria-invalid={branch.trim() !== "" && !branchValid}
+              />
+              <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={loadingBranches || branchNames.length === 0}
+                    className="flex items-center justify-center px-2 border-l border-white/20 text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
+                    aria-label="Open branch list"
+                  >
+                    <ChevronDown className="w-4 h-4" aria-hidden />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  sideOffset={4}
+                  className="min-w-[var(--radix-popover-trigger-width)] max-h-60 overflow-auto p-1 bg-[#0f1e50] text-white border border-white/20 rounded-md"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  {branchNames.length === 0 ? (
+                    <p className="px-2 py-1.5 text-sm text-slate-400">No branches</p>
+                  ) : (
+                    branchNames.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => {
+                          setBranch(name);
+                          setBranchDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-white/10 focus:bg-white/10 outline-none cursor-pointer"
+                      >
+                        {name}
+                      </button>
+                    ))
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+            {branch.trim() !== "" && !branchNames.includes(branch) && !isValidBranchName(branch) && (
+              <p className="text-xs text-amber-300">
+                Use only letters, numbers, /, -, _, and .
+              </p>
+            )}
+            {branch.trim() !== "" && !branchNames.includes(branch) && isValidBranchName(branch) && (
+              <p className="text-xs text-slate-400">
+                New branch will be created from {selectedRepo?.default_branch || "main"}.
+              </p>
+            )}
+            {isErrorBranches && errorBranches && (
+              <p className="text-xs text-amber-300">
+                Could not load branches: {errorBranches instanceof Error ? errorBranches.message : "Unknown error"}
+              </p>
+            )}
           </div>
 
           {/* Title */}
@@ -363,9 +412,13 @@ export default function CommitDialog(props: Props) {
           <div className="space-y-4">
             <div className="text-sm text-slate-200 space-y-2 bg-black/20 rounded-lg p-3 font-mono">
               <div><span className="text-slate-400">Repo:</span> {selectedRepo?.full_name ?? "—"}</div>
-              <div><span className="text-slate-400">Branch:</span> {branch || "main"}</div>
+              <div><span className="text-slate-400">Branch:</span> {branch?.trim() || "main"}</div>
               <div><span className="text-slate-400">File:</span> {targetPath}</div>
-              <div><span className="text-slate-400">Action:</span> {mode === "pull_request" ? (provider === "gitlab" ? "Merge Request" : "Pull Request") : "Direct Push"}</div>
+              <div><span className="text-slate-400">Action:</span>{
+                mode === "pull_request"
+                  ? (provider === "gitlab" ? " Merge Request" : " Pull Request")
+                  : " Direct Push"
+              }</div>
               <div><span className="text-slate-400">Summary:</span> {isUpdate ? "Will update 1 file" : "Will create new file"}</div>
             </div>
             <div className="text-xs text-slate-300 bg-black/20 p-2 rounded">

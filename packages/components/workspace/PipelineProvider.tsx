@@ -92,6 +92,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const {
     data: reposResponse,
     isLoading: isLoadingRepos,
+    isError: isErrorRepos,
+    error: errorRepos,
     refetch: refetchRepos,
   } = useQuery({
     queryKey: ["repos", repoProvider],
@@ -101,6 +103,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         repoProvider === "gitlab" ? `/api/gitlab/repos` : `/api/github/repos`;
       const res = await fetch(endpoint, { credentials: "include" });
       const data = await res.json();
+      if (!res.ok)
+        throw new Error(
+          (data as { error?: string })?.error ||
+            (data as { detail?: string })?.detail ||
+            "Failed to load repositories",
+        );
       return { me: data.me, repos: (data.repos || []) as Repo[] };
     },
     enabled: !!repoProvider,
@@ -111,10 +119,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     [refetchRepos],
   );
 
+  useEffect(() => {
+    if (isErrorRepos && errorRepos)
+      toast.error(errorRepos instanceof Error ? errorRepos.message : "Failed to load repositories");
+  }, [isErrorRepos, errorRepos]);
+
   // --- Branches ---
   const {
     data: availableBranchesData = [],
     isLoading: isLoadingBranches,
+    isError: isErrorBranches,
+    error: errorBranches,
     refetch: refetchBranches,
   } = useQuery({
     queryKey: ["branches", selectedRepo?.full_name, repoProvider],
@@ -129,11 +144,21 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         { credentials: "include" },
       );
       const data = await res.json();
+      if (!res.ok)
+        throw new Error(
+          (data as { error?: string })?.error ||
+            (data as { detail?: string })?.detail ||
+            "Failed to load branches",
+        );
       return (data.branches || []).map((b: { name: string }) => b.name) as string[];
     },
     enabled: !!selectedRepo?.full_name && !!repoProvider,
   });
   const availableBranches = availableBranchesData;
+  useEffect(() => {
+    if (isErrorBranches && errorBranches)
+      toast.error(errorBranches instanceof Error ? errorBranches.message : "Failed to load branches");
+  }, [isErrorBranches, errorBranches]);
   const fetchBranches = useCallback(
     (_repoFullName: string) => refetchBranches().then(() => undefined),
     [refetchBranches],
@@ -468,7 +493,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           provider: repoProvider,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error((data as { error?: string })?.error || "Auto setup failed.");
+        return;
+      }
       if (data.config) {
         const targetFileName =
           repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
@@ -505,7 +534,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         );
       }
     } catch (e) {
-      toast.error("Auto setup failed. Please configure manually.");
+      toast.error(
+        e instanceof Error ? e.message : "Auto setup failed. Please configure manually.",
+      );
     } finally {
       setIsLoadingOther(false);
     }

@@ -52,6 +52,8 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
     data: reposData,
     isLoading: loading,
     isFetching,
+    isError,
+    error,
     refetch,
   } = useQuery({
     queryKey: ["repos", provider],
@@ -63,7 +65,7 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Fetch error");
+      if (!res.ok) throw new Error((data as { error?: string })?.error || "Fetch error");
       return { me: data.me as { login: string; avatar_url?: string } | null, repos: (data.repos || []) as Repo[] };
     },
     enabled: open && !!provider,
@@ -140,7 +142,22 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
-            {loading && !repos.length ? (
+            {isError && error ? (
+              <div className="p-6 text-center flex flex-col items-center gap-3">
+                <p className="text-sm text-amber-200">
+                  Could not load repositories: {error instanceof Error ? error.message : "Unknown error"}
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-white/20 hover:bg-white/30 text-white border-none"
+                  onClick={() => refetch()}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            ) : loading && !repos.length ? (
               <GridSkeleton />
             ) : (
               <>
