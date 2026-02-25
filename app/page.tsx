@@ -6,6 +6,6 @@ export default function Page() {
     <main className="flex flex-col gap-4">
       <Topbar />
       <Workspace />
-    </main>
+   </main> 
   );
 }

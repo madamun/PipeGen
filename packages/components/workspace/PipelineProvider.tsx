@@ -307,7 +307,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
     setIsLoadingOther(true);
     try {
-      await fetch("/api/pipeline/sync", {
+      const syncRes = await fetch("/api/pipeline/sync", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -317,6 +317,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           provider: repoProvider,
         }),
       });
+      if (!syncRes.ok) {
+        setDraftList([]);
+        setGitFileList([]);
+        setFileList([]);
+        return;
+      }
       const res = await fetch(
         `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}`,
         { credentials: "include" },

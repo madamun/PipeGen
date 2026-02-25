@@ -14,6 +14,7 @@ import {
 import EditorBody from "./EditorBody";
 import CommitDialog from "../../commit/CommitDialog";
 import EditorToolbar from "./EditorToolbar";
+import EditorAIPanel from "./EditorAIPanel";
 import { usePipeline } from "../../workspace/PipelineProvider";
 import { Button } from "../../ui/button";
 import {
@@ -30,6 +31,7 @@ interface EditorHeaderProps {
   setZoom: (z: number) => void;
   isDiffMode: boolean;
   setIsDiffMode: (v: boolean) => void;
+  onOpenAIPanel?: () => void;
 }
 
 function EditorHeader({
@@ -37,6 +39,7 @@ function EditorHeader({
   setZoom,
   isDiffMode,
   setIsDiffMode,
+  onOpenAIPanel,
 }: EditorHeaderProps) {
   // ✅ เรียก fileContent และ selectedFile มาใช้
   const {
@@ -223,6 +226,7 @@ function EditorHeader({
           setZoom={setZoom}
           isDiffMode={isDiffMode}
           setIsDiffMode={setIsDiffMode}
+          onOpenAIPanel={onOpenAIPanel}
         />
       </div>
     </div>
@@ -233,7 +237,9 @@ export default function RightPanel() {
   const [fontSize, setFontSize] = React.useState(13);
   const [isDiffMode, setIsDiffMode] = React.useState(false);
   const [commitOpen, setCommitOpen] = React.useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = React.useState(false);
   const [hasYamlErrors, setHasYamlErrors] = React.useState(false);
+  const editorContainerRef = React.useRef<HTMLDivElement>(null);
   const { selectedRepo, selectedFile, fileContent } = usePipeline();
 
   const showCommitButton = !!selectedRepo?.full_name && !!selectedFile;
@@ -270,8 +276,14 @@ export default function RightPanel() {
         setZoom={setFontSize}
         isDiffMode={isDiffMode}
         setIsDiffMode={setIsDiffMode}
+        onOpenAIPanel={() => setAiPanelOpen(true)}
       />
-      <div className="flex-1 bg-[#010819] overflow-auto relative">
+      <div ref={editorContainerRef} className="flex-1 bg-[#010819] overflow-auto relative min-h-0">
+        <EditorAIPanel
+          open={aiPanelOpen}
+          onOpenChange={setAiPanelOpen}
+          containerRef={editorContainerRef}
+        />
         <EditorBody
           fontSize={fontSize}
           isDiffMode={isDiffMode}
