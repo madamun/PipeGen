@@ -19,6 +19,7 @@ import {
   Tag,
   GitBranch,
   GitPullRequest,
+  Github,
 } from "lucide-react";
 import { usePipeline } from "../workspace/PipelineProvider";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -65,8 +66,12 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error((data as { error?: string })?.error || "Fetch error");
-      return { me: data.me as { login: string; avatar_url?: string } | null, repos: (data.repos || []) as Repo[] };
+      if (!res.ok)
+        throw new Error((data as { error?: string })?.error || "Fetch error");
+      return {
+        me: data.me as { login: string; avatar_url?: string } | null,
+        repos: (data.repos || []) as Repo[],
+      };
     },
     enabled: open && !!provider,
   });
@@ -87,6 +92,12 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
     setSelectedBranch(r.default_branch || "main");
     setOpen(false);
   }
+
+  // ฟังก์ชันวิ่งไปหน้าตั้งค่า GitHub App
+  const handleManageRepos = () => {
+    // 🔴 สิ่งที่ต้องทำ: เปลี่ยน "pipegen-ci" เป็นชื่อแอป GitHub ของคุณจริงๆ
+    window.open("https://github.com/apps/pipegen-ci/installations/new", "_blank");
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -127,26 +138,55 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
               </TabsTrigger>
             </TabsList>
 
-            <Button
-              size="sm"
-              variant="secondary"
-              className="bg-white/20 hover:bg-white/30 text-white border-none"
-              onClick={() => refetch()}
-              disabled={loading || isFetching}
-            >
-              <RefreshCw
-                className={`mr-2 h-4 w-4 ${loading || isFetching ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </Button>
+            {/* กลุ่มปุ่ม Action ฝั่งขวา (Manage & Refresh) */}
+            <div className="flex items-center gap-2">
+              {provider === "github" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
+                  onClick={handleManageRepos}
+                  title="Choose which repositories PipeGen can access"
+                >
+                  <Github className="mr-2 h-4 w-4" />
+                  Manage Access
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
+                onClick={() => refetch()}
+                disabled={loading || isFetching}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${loading || isFetching ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
             {isError && error ? (
               <div className="p-6 text-center flex flex-col items-center gap-3">
                 <p className="text-sm text-amber-200">
-                  Could not load repositories: {error instanceof Error ? error.message : "Unknown error"}
+                  Could not load repositories:{" "}
+                  {error instanceof Error ? error.message : "Unknown error"}
                 </p>
+                {/* ถ้าดึงข้อมูลพลาด ก็มีปุ่ม Manage ให้กดแก้ปัญหาได้ */}
+                {provider === "github" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors mb-2"
+                    onClick={handleManageRepos}
+                  >
+                    <Github className="mr-2 h-4 w-4" />
+                    Check GitHub App Permissions
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="secondary"
@@ -162,10 +202,11 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
             ) : (
               <>
                 <TabsContent value="my" className=" m-1 mt-1">
-                  <RepoGrid repos={my} onPick={pick} />
+                  {/* ส่ง provider ลงไปด้วย เพื่อให้ RepoGrid รู้ */}
+                  <RepoGrid repos={my} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
                 </TabsContent>
                 <TabsContent value="co" className="m-0 mt-0">
-                  <RepoGrid repos={co} onPick={pick} />
+                  <RepoGrid repos={co} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
                 </TabsContent>
               </>
             )}
@@ -176,20 +217,43 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
   );
 }
 
+// ✅ อัปเดต RepoGrid ให้รับ provider กับ handleManageRepos มาด้วย
 function RepoGrid({
   repos,
   onPick,
+  provider,
+  handleManageRepos,
 }: {
   repos: Repo[];
   onPick: (r: Repo) => void;
+  provider: string;
+  handleManageRepos: () => void;
 }) {
+
+  // ✅ ถ้า Repo เป็น 0 ให้แสดงหน้าจอสวยๆ บังคับให้ไปตั้งค่า
   if (!repos.length)
     return (
-      <div className="p-10 text-center opacity-80 flex flex-col items-center gap-2">
-        <Globe className="w-8 h-8 opacity-50" />
-        <span>No repositories found</span>
+      <div className="p-10 flex flex-col items-center justify-center h-64 text-center mt-10">
+        <div className="bg-blue-500/20 p-5 rounded-full mb-6 border border-blue-500/30">
+          <Github className="w-12 h-12 text-blue-300" />
+        </div>
+        <h3 className="text-2xl font-bold text-white mb-3">Connect Your Repositories</h3>
+        <p className="text-sm text-slate-300 max-w-sm mb-8 leading-relaxed">
+          You have successfully logged in! Now, please grant PipeGen access to the repositories you want to work with.
+        </p>
+        {provider === "github" && (
+          <Button
+            size="lg"
+            className="bg-[#3b82f6] hover:bg-[#2f6ad6] text-white shadow-lg shadow-blue-500/20 text-md px-6 py-6"
+            onClick={handleManageRepos}
+          >
+            <LockKeyhole className="mr-3 h-5 w-5" />
+            Select Repositories
+          </Button>
+        )}
       </div>
     );
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2 pb-4">
       {repos.map((r) => (
@@ -252,27 +316,18 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
       {/* Badges Area */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* 🎯 Pipeline: 
-              - ถ้าเป็น GitHub: โชว์เสมอ (แม้เป็น 0)
-              - ถ้าเป็น GitLab: โชว์เฉพาะตอน > 0
-           */}
           {(isGithub || pipelineCount > 0) && (
             <Badge icon={<GitPullRequest className="h-3 w-3 text-blue-300" />}>
               {pipelineCount} {pipelineCount !== 1 ? "pipelines" : "pipeline"}
             </Badge>
           )}
 
-          {/* 🎯 Branch: 
-              - ถ้าเป็น GitHub: โชว์เสมอ (แม้เป็น 0)
-              - ถ้าเป็น GitLab: โชว์เฉพาะตอน > 0
-           */}
           {(isGithub || branchCount > 0) && (
             <Badge icon={<GitBranch className="h-3 w-3" />}>
               {branchCount}
             </Badge>
           )}
 
-          {/* Star: โชว์เฉพาะถ้ามีค่า > 0 (อันนี้เหมือนกันทั้งคู่) */}
           {repo.stargazers_count > 0 && (
             <Badge icon={<Star className="h-3 w-3 text-yellow-400" />}>
               {repo.stargazers_count}
@@ -283,9 +338,6 @@ function RepoCard({ repo, onPick }: { repo: Repo; onPick: () => void }) {
             <Badge icon={<Tag className="h-3 w-3" />}>{tagCount}</Badge>
           )}
 
-          {/* ป้าย Provider สำรอง:
-              จะโชว์ก็ต่อเมื่อ ไม่มีอะไรจะโชว์จริงๆ (เช่น GitLab ที่ไม่มีดาว ไม่มี branch ไม่มี pipeline)
-           */}
           {!isGithub &&
             pipelineCount === 0 &&
             branchCount === 0 &&
