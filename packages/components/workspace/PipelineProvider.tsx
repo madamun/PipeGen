@@ -50,6 +50,27 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOther, setIsLoadingOther] = useState(false);
 
+  // Left Panel open/close (for Suggestions "Go to Left Panel")
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState<
+    Record<string, boolean>
+  >({});
+  const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const navigateToBlock = useCallback(
+    (categoryId: string, componentName: string) => {
+      setIsCollapsed(false);
+      setCategoriesOpen((prev) => ({ ...prev, [categoryId]: true }));
+      setSectionsOpen((prev) => ({
+        ...prev,
+        [componentName.toLowerCase()]: true,
+      }));
+    },
+    [],
+  );
+
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
   const lastSavedContent = useRef<string | null>(null);
@@ -584,6 +605,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         componentValues,
         updateComponentValue,
         autoSetup,
+        isCollapsed,
+        setIsCollapsed,
+        categoriesOpen,
+        setCategoriesOpen,
+        sectionsOpen,
+        setSectionsOpen,
+        navigateToBlock,
       }}
     >
       {children}

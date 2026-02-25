@@ -105,4 +105,21 @@ export interface PipelineContextType {
   ) => void;
 
   autoSetup: () => Promise<void>;
+
+  // Left Panel open/close state (for Suggestions "Go to Left Panel")
+  isCollapsed: boolean;
+  setIsCollapsed: (val: boolean) => void;
+  categoriesOpen: Record<string, boolean>;
+  setCategoriesOpen: (
+    action:
+      | Record<string, boolean>
+      | ((prev: Record<string, boolean>) => Record<string, boolean>)
+  ) => void;
+  sectionsOpen: Record<string, boolean>;
+  setSectionsOpen: (
+    action:
+      | Record<string, boolean>
+      | ((prev: Record<string, boolean>) => Record<string, boolean>)
+  ) => void;
+  navigateToBlock: (categoryId: string, componentName: string) => void;
 }

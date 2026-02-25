@@ -2,7 +2,6 @@
 
 "use client";
 
-import { useState } from "react";
 import {
   Settings,
   ChevronDown,
@@ -33,10 +32,13 @@ const IconMap: Record<string, any> = {
   Default: Box,
 };
 
-// ✅ 1. เพิ่ม Interface ตรงนี้ (บอกว่าฉันจะรับข้อมูล categoriesOpen มาจากแม่นะ)
 interface SetupSectionProps {
   categoriesOpen: Record<string, boolean>;
   setCategoriesOpen: React.Dispatch<
+    React.SetStateAction<Record<string, boolean>>
+  >;
+  sectionsOpen: Record<string, boolean>;
+  setSectionsOpen: React.Dispatch<
     React.SetStateAction<Record<string, boolean>>
   >;
   isCollapsed?: boolean;
@@ -47,15 +49,12 @@ interface SetupSectionProps {
 export default function SetupSection({
   categoriesOpen,
   setCategoriesOpen,
+  sectionsOpen,
+  setSectionsOpen,
   isCollapsed,
   setIsCollapsed,
   searchQuery,
 }: SetupSectionProps) {
-  const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({
-    git: true,
-    trigger: true,
-  });
-
   const {
     categories,
     availableBranches,

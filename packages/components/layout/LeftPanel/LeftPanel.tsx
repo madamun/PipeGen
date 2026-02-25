@@ -67,20 +67,16 @@ function LeftTop({
 }
 
 // --- Component หลัก ---
-// ✅ 3. รับ Props จากหน้า Workspace
-export default function LeftPanel({
-  isCollapsed = false,
-  setIsCollapsed = () => {},
-}: {
-  isCollapsed?: boolean;
-  setIsCollapsed?: (val: boolean) => void;
-}) {
-  const { categories } = usePipeline();
-
-  // State การเปิด-ปิดหมวดหมู่หลัก (Lifting State Up)
-  const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>(
-    {},
-  );
+export default function LeftPanel() {
+  const {
+    categories,
+    categoriesOpen,
+    setCategoriesOpen,
+    sectionsOpen,
+    setSectionsOpen,
+    isCollapsed,
+    setIsCollapsed,
+  } = usePipeline();
   const [searchQuery, setSearchQuery] = useState("");
 
   // ฟังก์ชันฉลาดๆ สำหรับเปิด/ปิดทั้งหมด
@@ -119,6 +115,8 @@ export default function LeftPanel({
         <SetupSection
           categoriesOpen={categoriesOpen}
           setCategoriesOpen={setCategoriesOpen}
+          sectionsOpen={sectionsOpen}
+          setSectionsOpen={setSectionsOpen}
           isCollapsed={isCollapsed}
           setIsCollapsed={setIsCollapsed}
           searchQuery={searchQuery}

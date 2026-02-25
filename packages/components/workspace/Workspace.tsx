@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
 import LeftPanel from "../layout/LeftPanel/LeftPanel";
 import RightPanel from "../layout/RightPanel/RightPanel";
+import { usePipeline } from "../workspace/PipelineProvider";
 
 export default function Workspace() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed } = usePipeline();
 
   return (
     <div
@@ -15,7 +15,7 @@ export default function Workspace() {
       }`}
     >
       <div className="min-h-0 h-full overflow-hidden">
-        <LeftPanel isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+        <LeftPanel />
       </div>
 
       <div className="min-h-0 h-full overflow-hidden">
