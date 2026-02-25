@@ -37,9 +37,9 @@ export async function GET(req: Request) {
       where: {
         repoId: repo.id,
         branch: branch,
-        drafts: { some: {} },
+        drafts: { isNot: null },
       },
-      select: { filePath: true, name: true }, // *ถ้าจะให้ Draft มี content ด้วยต้อง select เพิ่ม*
+      select: { filePath: true, name: true },
     });
 
     drafts = dbPipelines.map((p) => ({

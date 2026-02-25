@@ -105,12 +105,12 @@ export async function GET(req: Request) {
         include: { drafts: true },
       });
 
-      // ถ้ามี Draft เอา Draft มาโชว์
-      if (pipeline?.drafts?.[0]?.configuration !== undefined) {
+      // ถ้ามี Draft เอา Draft มาโชว์ (drafts เป็น relation 1:1 ไม่ใช่ array)
+      if (pipeline?.drafts?.configuration !== undefined) {
         return NextResponse.json({
-          content: pipeline.drafts[0].configuration,
+          content: pipeline.drafts.configuration,
           source: "draft",
-          updatedAt: pipeline.drafts[0].updatedAt,
+          updatedAt: pipeline.drafts.updatedAt,
         });
       }
     }
