@@ -1,4 +1,3 @@
-// src/app/api/github/repos/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";
@@ -25,20 +24,11 @@ export async function GET(req: NextRequest) {
     Accept: "application/vnd.github+json",
   };
 
-  // fetch /user + /user/repos
-  const [meRes, reposRes] = await Promise.all([
-    fetch("https://api.github.com/user", {
-      headers: ghHeaders,
-      cache: "no-store",
-    }),
-    fetch(
-      "https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all&affiliation=owner,collaborator,organization_member",
-      {
-        headers: ghHeaders,
-        cache: "no-store",
-      },
-    ),
-  ]);
+  // 1. ดึงข้อมูล User Profile
+  const meRes = await fetch("https://api.github.com/user", {
+    headers: ghHeaders,
+    cache: "no-store",
+  });
 
   if (!meRes.ok) {
     const t = await meRes.text();
@@ -47,20 +37,45 @@ export async function GET(req: NextRequest) {
       { status: 502 },
     );
   }
-  if (!reposRes.ok) {
-    const t = await reposRes.text();
+  const me = await meRes.json();
+
+  // 2. ถามหาว่าลง GitHub App ไว้ที่ไหนบ้าง (Installations)
+  let rawRepos: any[] = [];
+  const instRes = await fetch("https://api.github.com/user/installations", {
+    headers: ghHeaders,
+    cache: "no-store",
+  });
+
+  if (!instRes.ok) {
+    const t = await instRes.text();
     return Response.json(
-      {
-        error: `GitHub /user/repos ${reposRes.status}`,
-        detail: t.slice(0, 200),
-      },
+      { error: `GitHub /user/installations ${instRes.status}`, detail: t.slice(0, 200) },
       { status: 502 },
     );
   }
 
-  const me = await meRes.json();
-  const rawRepos: any[] = await reposRes.json();
+  const instData = await instRes.json();
 
+  // 3. ดึง Repositories จากทุก Installation ที่ได้รับสิทธิ์ (กรณี User ลงแอปไว้หลายองค์กร)
+  if (instData.installations && instData.installations.length > 0) {
+    const repoPromises = instData.installations.map(async (inst: any) => {
+      const repoRes = await fetch(
+        `https://api.github.com/user/installations/${inst.id}/repositories?per_page=100`,
+        { headers: ghHeaders, cache: "no-store" }
+      );
+      if (repoRes.ok) {
+        const data = await repoRes.json();
+        // GitHub App จะคืนค่า Repo กลับมาในคีย์ชื่อ repositories
+        return data.repositories || [];
+      }
+      return [];
+    });
+
+    const reposArrays = await Promise.all(repoPromises);
+    rawRepos = reposArrays.flat(); // จับรวมกันเป็น Array ก้อนเดียว
+  }
+
+  // 4. แปลงข้อมูลกลับไปใช้ Format เดิมเพื่อไม่ให้ UI พัง
   const baseRepos = rawRepos.map((r) => ({
     id: r.id,
     name: r.name,
