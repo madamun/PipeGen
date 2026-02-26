@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Topbar from "../layout/Topbar";
-import FlipModeView from "./FlipModeView";
+import Workspace from "./Workspace";
 import type { AppMode } from "../layout/Topbar";
 
 export default function AppShell() {
@@ -11,7 +11,7 @@ export default function AppShell() {
   return (
     <main className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
       <Topbar mode={mode} onModeChange={setMode} />
-      <FlipModeView mode={mode} />
+      <Workspace mode={mode} />
     </main>
   );
 }

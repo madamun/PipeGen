@@ -78,6 +78,11 @@ export default function TemplateView() {
       </header>
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="max-w-2xl mx-auto space-y-2">
+          {sortedSections.length === 0 && (
+            <p className="text-center text-slate-500 text-sm py-8">
+              ยังไม่มีหมวด — กดปุ่ม &quot;เพิ่มหมวด&quot; ด้านล่างเพื่อเริ่มต้น
+            </p>
+          )}
           {sortedSections.map((section, index) => (
             <TemplateSectionAccordion
               key={section.id}
