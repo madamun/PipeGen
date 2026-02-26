@@ -1,11 +1,5 @@
-import Topbar from "../packages/components/layout/Topbar";
-import Workspace from "../packages/components/workspace/Workspace";
+import AppShell from "../packages/components/workspace/AppShell";
 
 export default function Page() {
-  return (
-    <main className="flex flex-col gap-4">
-      <Topbar />
-      <Workspace />
-   </main> 
-  );
+  return <AppShell />;
 }
