@@ -37,8 +37,43 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [syntaxProvider, setSyntaxProvider] = useState<"github" | "gitlab">(
     "github",
   );
+
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-  const [selectedBranch, setSelectedBranch] = useState("main");
+  const [selectedBranch, setSelectedBranch] = useState<string>("main");
+
+  // 3. เพิ่ม useEffect เพื่อเซฟลง localStorage ทันทีที่มีการเปลี่ยน Repo
+  useEffect(() => {
+    if (selectedRepo) {
+      localStorage.setItem("pipegen_last_repo", JSON.stringify(selectedRepo));
+    } else {
+      localStorage.removeItem("pipegen_last_repo");
+    }
+  }, [selectedRepo]);
+
+  useEffect(() => {
+    const savedRepo = localStorage.getItem("pipegen_last_repo");
+    if (savedRepo) {
+      try {
+        setSelectedRepo(JSON.parse(savedRepo));
+      } catch (e) {
+        console.error("Failed to parse saved repo", e);
+      }
+    }
+
+    const savedBranch = localStorage.getItem("pipegen_last_branch");
+    if (savedBranch) {
+      setSelectedBranch(savedBranch);
+    }
+  }, []);
+
+  //  4. เพิ่ม useEffect เพื่อเซฟลง localStorage ทันทีที่มีการเปลี่ยน Branch
+  useEffect(() => {
+    if (selectedBranch) {
+      localStorage.setItem("pipegen_last_branch", selectedBranch);
+    }
+  }, [selectedBranch]);
+
+
   const [fileContent, setFileContent] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [originalContent, setOriginalContent] = useState("");
@@ -56,6 +91,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const skipLoadOnce = useRef(false);
 
   // --- Init: components ---
+
   const { data: categoriesData } = useQuery({
     queryKey: ["components"],
     queryFn: async () => {
@@ -106,8 +142,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (!res.ok)
         throw new Error(
           (data as { error?: string })?.error ||
-            (data as { detail?: string })?.detail ||
-            "Failed to load repositories",
+          (data as { detail?: string })?.detail ||
+          "Failed to load repositories",
         );
       return { me: data.me, repos: (data.repos || []) as Repo[] };
     },
@@ -147,8 +183,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (!res.ok)
         throw new Error(
           (data as { error?: string })?.error ||
-            (data as { detail?: string })?.detail ||
-            "Failed to load branches",
+          (data as { detail?: string })?.detail ||
+          "Failed to load branches",
         );
       return (data.branches || []).map((b: { name: string }) => b.name) as string[];
     },
@@ -169,8 +205,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (selectedRepo) {
-      if (selectedRepo.default_branch)
-        setSelectedBranch(selectedRepo.default_branch);
       if (selectedRepo.provider)
         setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
     }
@@ -178,7 +212,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const getFullFilePath = (fileName: string) => {
     if (!fileName) return "";
-    
+
     if (selectedRepo?.provider === "gitlab") {
       // ถ้าเป็นไฟล์หลัก หรือมีโฟลเดอร์มาแล้ว ให้ใช้ชื่อนั้นเลย
       if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) {
