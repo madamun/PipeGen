@@ -1,4 +1,4 @@
-// src/app/api/pipeline/files/route.ts
+// app/api/pipeline/files/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";
@@ -87,13 +87,42 @@ export async function GET(req: Request) {
         }
 
         // ==========================================
-        // 🦊 GITLAB LOGIC (พระเอกของเรา)
+        // 🦊 GITLAB LOGIC (อัปเกรดความฉลาดขั้นสุด!)
         // ==========================================
-else if (provider === "gitlab") {
+        else if (provider === "gitlab") {
           const encodedId = encodeURIComponent(repoFullName);
-          // 🔥 1. ดึง Tree แบบลึก
-          const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/tree?ref=${branch}&recursive=true&per_page=100`;
 
+          // 🔥 1. แอบไปถาม GitLab ว่าโปรเจกต์นี้ใช้ Custom CI Path ไหม?
+          let customCiPath = ".gitlab-ci.yml";
+          try {
+            const projectRes = await fetch(`https://gitlab.com/api/v4/projects/${encodedId}`, {
+              headers: { Authorization: `Bearer ${account.accessToken}` },
+            });
+            if (projectRes.ok) {
+              const projectData = await projectRes.json();
+              if (projectData.ci_config_path) customCiPath = projectData.ci_config_path;
+            }
+          } catch (e) {
+            console.error("Failed to fetch project info for CI path:", e);
+          }
+          const lowerCustomPath = customCiPath.toLowerCase();
+
+          // 🔥 1.5 แอบไปดึง "เนื้อหาดิบ" ของไฟล์หลักมาอ่าน!
+          let mainCiContent = "";
+          try {
+            const rawRes = await fetch(
+              `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodeURIComponent(customCiPath)}/raw?ref=${branch}`,
+              { headers: { Authorization: `Bearer ${account.accessToken}` } }
+            );
+            if (rawRes.ok) {
+              mainCiContent = await rawRes.text(); // ได้เนื้อหา YAML มาเป็น String ยาวๆ
+            }
+          } catch (e) {
+            console.error("Failed to fetch main CI content:", e);
+          }
+
+          // 🔥 2. ดึง Tree แบบลึก
+          const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/tree?ref=${branch}&recursive=true&per_page=100`;
           const glRes = await fetch(apiUrl, {
             method: "GET",
             headers: { Authorization: `Bearer ${account.accessToken}` },
@@ -102,23 +131,37 @@ else if (provider === "gitlab") {
           if (glRes.ok) {
             const files = await glRes.json();
             if (Array.isArray(files)) {
-              // 2. กรองเหมือนกับหน้า Sync
+              
+              // 🔥 3. อัปเกรดตัวกรอง (Filter) ด้วยเวทมนตร์ Includes
               const ymlFiles = files.filter((f: any) => {
                 if (f.type !== "blob") return false;
+                
                 const lowerPath = f.path.toLowerCase();
-                return (lowerPath.endsWith(".yml") || lowerPath.endsWith(".yaml")) && 
-                       (lowerPath === ".gitlab-ci.yml" || lowerPath.startsWith(".gitlab/ci/"));
+                const isYaml = lowerPath.endsWith(".yml") || lowerPath.endsWith(".yaml");
+                if (!isYaml) return false;
+
+                // เงื่อนไขที่ 1: เป็นไฟล์หลัก (พระเอก)
+                const isMainFile = lowerPath === lowerCustomPath;
+                // เงื่อนไขที่ 2: อยู่ในโฟลเดอร์มาตรฐาน
+                const isStandardDir = lowerPath.startsWith(".gitlab/ci/");
+                // เงื่อนไขที่ 3 [เวทมนตร์]: ชื่อ Path ของไฟล์นี้ ถูกเขียนเรียกไว้ในไฟล์หลัก!
+                // (ใช้รวมถึงไฟล์ใน Root เช่น include: local: 'deploy.yml')
+                const isMentionedInMain = mainCiContent.includes(f.path) || mainCiContent.includes(f.name);
+
+                // ถ้าเข้าข่ายข้อใดข้อหนึ่ง ให้ผ่าน!
+                return isMainFile || isStandardDir || isMentionedInMain;
               });
               
               ymlFiles.forEach((f: any) => {
                 gitFiles.push({
                   fileName: f.name, 
-                  fullPath: f.path, // ส่ง Path เต็มกลับไป
+                  fullPath: f.path,
                   source: "git",
                 });
               });
             }
           }
+        
         }
       }
     } catch (e) {
