@@ -1,5 +1,3 @@
-// src/components/layout/RightPanel/RightPanel.tsx
-
 "use client";
 
 import * as React from "react";
@@ -38,7 +36,6 @@ function EditorHeader({
   isDiffMode,
   setIsDiffMode,
 }: EditorHeaderProps) {
-  // ✅ เรียก fileContent และ selectedFile มาใช้
   const {
     selectedFile,
     setSelectedFile,
@@ -54,8 +51,9 @@ function EditorHeader({
   const [tempName, setTempName] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  // เช็ก Draft โดยอิงจาก fullPath หรือ fileName เพื่อความชัวร์
   const isCurrentFileDraft = React.useMemo(
-    () => draftList.some((f) => f.fileName === selectedFile),
+    () => draftList.some((f) => f.fullPath === selectedFile || f.fileName === selectedFile),
     [draftList, selectedFile],
   );
 
@@ -67,14 +65,18 @@ function EditorHeader({
   }, [isEditing]);
 
   const startRenaming = () => {
-    setTempName(selectedFile);
+    // ตอนกำลังจะแก้ชื่อ ให้โชว์แค่ชื่อไฟล์ด้านหลัง (ตัดพาธทิ้งชั่วคราว)
+    const shortName = selectedFile ? selectedFile.split('/').pop() || "" : "";
+    setTempName(shortName);
     setIsEditing(true);
   };
+  
   const handleCreateNew = () => {
     setSelectedFile("");
     setTempName("");
     setIsEditing(true);
   };
+  
   const saveName = () => {
     let finalName = tempName.trim();
     if (!finalName) {
@@ -89,6 +91,7 @@ function EditorHeader({
     renameCurrentFile(finalName);
     setIsEditing(false);
   };
+  
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") saveName();
     if (e.key === "Escape") {
@@ -96,6 +99,9 @@ function EditorHeader({
       if (!selectedFile) setSelectedFile("");
     }
   };
+
+  // ฟังก์ชันช่วยสกัดชื่อไฟล์สั้นๆ เอาไว้โชว์
+  const getShortName = (path: string) => path ? path.split('/').pop() || path : "";
 
   return (
     <div className="flex h-11 px-4 pr-4 pl-8 justify-between items-center self-stretch border-b border-white/10 ">
@@ -121,33 +127,31 @@ function EditorHeader({
               <span
                 className={`truncate flex-1 ${provider === "gitlab" ? "cursor-default" : "cursor-pointer select-none"}`}
                 onDoubleClick={startRenaming}
-                title={selectedFile}
+                title={selectedFile} // 🦊 Hover แล้วโชว์ Full Path
               >
-                {selectedFile}
+                {/* โชว์แค่ชื่อไฟล์สั้นๆ บนหัวแท็บ */}
+                {getShortName(selectedFile)}
               </span>
             )}
             {!isEditing && (
               <>
-                {" "}
-                  <Pencil
-                    onClick={startRenaming}
-                    className="h-3.5 w-3.5 text-slate-500 hover:text-blue-400 cursor-pointer transition-colors"
-                  />
-                {" "}
+                <Pencil
+                  onClick={startRenaming}
+                  className="h-3.5 w-3.5 text-slate-500 hover:text-blue-400 cursor-pointer transition-colors"
+                />
                 {isCurrentFileDraft && (
                   <>
-                    {" "}
                     {provider !== "gitlab" && (
                       <div className="w-px h-3 bg-white/10 mx-1"></div>
-                    )}{" "}
+                    )}
                     <span title="Discard this draft">
                       <Trash2
                         onClick={discardDraft}
                         className="h-3.5 w-3.5 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
                       />
-                    </span>{" "}
+                    </span>
                   </>
-                )}{" "}
+                )}
               </>
             )}
           </div>
@@ -171,23 +175,24 @@ function EditorHeader({
             >
               {draftList.length > 0 && (
                 <>
-                  {" "}
                   <DropdownMenuLabel className="text-xs text-amber-400 font-normal px-2 py-1 flex items-center gap-2">
                     <FileClock className="w-3 h-3" /> Draft Files
-                  </DropdownMenuLabel>{" "}
+                  </DropdownMenuLabel>
                   {draftList.map((f) => (
                     <DropdownMenuItem
                       key={f.fullPath}
-                      onClick={() => setSelectedFile(f.fileName)}
+                      onClick={() => setSelectedFile(f.fullPath)} // เซ็ตค่าแบบ Full Path
+                      title={f.fullPath} // Hover ดู Path เต็มได้
                       className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white"
                     >
-                      <span className="text-amber-200">{f.fileName}</span>{" "}
+                      {/* โชว์ชื่อสั้น */}
+                      <span className="text-amber-200">{getShortName(f.fileName)}</span>
                       <span className="ml-auto text-xs bg-amber-500/20 text-amber-300 px-1.5 rounded">
                         Draft
                       </span>
                     </DropdownMenuItem>
-                  ))}{" "}
-                  <DropdownMenuSeparator className="bg-white/10" />{" "}
+                  ))}
+                  <DropdownMenuSeparator className="bg-white/10" />
                 </>
               )}
               <DropdownMenuLabel className="text-xs text-slate-400 font-normal px-2 py-1 flex items-center gap-2">
@@ -202,10 +207,12 @@ function EditorHeader({
                 gitFileList.map((f) => (
                   <DropdownMenuItem
                     key={f.fullPath}
-                    onClick={() => setSelectedFile(f.fileName)}
+                    onClick={() => setSelectedFile(f.fullPath)} // เซ็ตค่าแบบ Full Path
+                    title={f.fullPath} // Hover ดู Path เต็มได้
                     className="cursor-pointer hover:bg-white/10 pl-6 focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white"
                   >
-                    {f.fileName}
+                    {/* โชว์ชื่อสั้น */}
+                    {getShortName(f.fileName)}
                   </DropdownMenuItem>
                 ))
               )}
@@ -215,7 +222,6 @@ function EditorHeader({
       </div>
 
       <div className="flex items-center">
-        {/* ✅ ส่ง fileName ไปให้ Toolbar */}
         <EditorToolbar
           content={fileContent}
           fileName={selectedFile}

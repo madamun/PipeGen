@@ -84,6 +84,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [componentValues, setComponentValues] = useState<ComponentValues>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOther, setIsLoadingOther] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
@@ -213,15 +214,26 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const getFullFilePath = (fileName: string) => {
     if (!fileName) return "";
 
+    //  1. ท่าไม้ตาย: ไปค้นหาใน fileList ก่อนเลยว่าเรามีประวัติไฟล์นี้ไหม?
+    const existingFile = fileList.find(
+      (f) => f.fileName === fileName || f.fullPath === fileName
+    );
+
+    // ถ้าเจอ! ให้ใช้ fullPath ของมันส่งไป Commit เลย (รับประกันว่าไม่มั่ว)
+    if (existingFile) {
+      return existingFile.fullPath;
+    }
+
+    // 2. ถ้าลงมาถึงตรงนี้ แปลว่าเป็น "ไฟล์ใหม่" ที่ผู้ใช้เพิ่งกดตั้งชื่อเอง (ยังไม่มีใน GitLab)
     if (selectedRepo?.provider === "gitlab") {
-      // ถ้าเป็นไฟล์หลัก หรือมีโฟลเดอร์มาแล้ว ให้ใช้ชื่อนั้นเลย
       if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) {
         return fileName;
       }
-      // ถ้าเป็นชื่อไฟล์ลอยๆ ให้ยัดเข้า .gitlab/ci/ อัตโนมัติ (เหมือนตอน Commit)
+      // สำหรับไฟล์ใหม่ของ GitLab ถ้าไม่ได้ใส่โฟลเดอร์มา ให้ไปสร้างใน .gitlab/ci/ เหมือนเดิม
       return `.gitlab/ci/${fileName}`;
     }
-    // ฝั่ง GitHub
+
+    // ฝั่ง GitHub (กรณีไฟล์ใหม่)
     return fileName.includes("/") ? fileName : `.github/workflows/${fileName}`;
   };
 
@@ -332,7 +344,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       });
       const res = await fetch(
         `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}`,
-        { credentials: "include" },
+        { credentials: "include", cache: "no-store" },
+
       );
       const data = await res.json();
       setDraftList(data.drafts || []);
@@ -376,15 +389,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           branch: selectedBranch,
           filePath: path,
         });
+        const cacheBuster = `&t=${Date.now()}`;
         const resGit = await fetch(`/api/pipeline/read?${params.toString()}`, {
           credentials: "include",
+          cache: "no-store",
         });
         const dataGit = await resGit.json();
         setOriginalContent(dataGit.content || "");
 
         const resDraft = await fetch(
           `/api/pipeline/draft?${params.toString()}`,
-          { credentials: "include" },
+          { credentials: "include", cache: "no-store", },
         );
         const dataDraft = await resDraft.json();
 
@@ -420,19 +435,32 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         return;
       try {
         setIsSaving(true);
+        const path = getFullFilePath(selectedFile);
         await fetch("/api/pipeline/draft", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repoFullName: selectedRepo.full_name,
-            filePath: getFullFilePath(selectedFile),
+            filePath: path,
             content,
             uiState: { ...componentValues, __syntax: syntaxProvider },
             branch: selectedBranch,
           }),
         });
         lastSavedContent.current = content;
+        const shortName = path.split('/').pop() || path;
+        setGitFileList((prev) => prev.filter((f) => f.fullPath !== path));
+        setDraftList((prev) => {
+          if (prev.some((f) => f.fullPath === path)) return prev;
+          return [...prev, { fileName: shortName, fullPath: path, source: 'draft' }];
+        });
+        setFileList((prev) => {
+          if (prev.some((f) => f.fullPath === path && f.source === 'draft')) return prev;
+          const filtered = prev.filter((f) => f.fullPath !== path);
+          return [...filtered, { fileName: shortName, fullPath: path, source: 'draft' }];
+        });
+
       } catch (e) {
       } finally {
         setIsSaving(false);
@@ -456,12 +484,43 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const renameCurrentFile = async (newName: string) => {
     if (!selectedRepo || !newName) return;
     isRenamingRef.current = true;
+    const oldFilePath = getFullFilePath(selectedFile);
+    const newFilePath = getFullFilePath(newName);
     setSelectedFile(newName);
     try {
-      await saveDraftToDB(fileContent);
+      setIsSaving(true);
+      await fetch("/api/pipeline/draft", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoFullName: selectedRepo.full_name,
+          filePath: newFilePath,
+          content: fileContent,
+          uiState: { ...componentValues, __syntax: syntaxProvider },
+          branch: selectedBranch,
+        }),
+      });
+      lastSavedContent.current = fileContent;
+      if (oldFilePath !== newFilePath) {
+        await fetch("/api/pipeline/draft", {
+          method: "DELETE",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repoFullName: selectedRepo.full_name,
+            filePath: oldFilePath,
+            branch: selectedBranch,
+          }),
+        });
+      }
       await refreshFileList();
+
     } catch (e) {
+      console.error("Rename failed:", e);
+    } finally {
       isRenamingRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -523,7 +582,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const autoSetup = async () => {
     if (!selectedRepo || !repoProvider) return;
-    setIsLoadingOther(true);
+    setIsAnalyzing(true);
     try {
       const res = await fetch("/api/pipeline/analyze", {
         method: "POST",
@@ -582,7 +641,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         e instanceof Error ? e.message : "Auto setup failed. Please configure manually.",
       );
     } finally {
-      setIsLoadingOther(false);
+      setIsAnalyzing(false);
     }
   };
 
@@ -611,6 +670,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         originalContent,
         isSaving,
         isLoading,
+        isAnalyzing,
         renameCurrentFile,
         commitFile,
         discardDraft,

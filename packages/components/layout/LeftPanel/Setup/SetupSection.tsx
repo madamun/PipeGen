@@ -1,4 +1,4 @@
-// src/components/layout/LeftPanel/Setup/SetupSection.tsx
+// packages/components/layout/LeftPanel/Setup/SetupSection.tsx
 
 "use client";
 

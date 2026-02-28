@@ -1,4 +1,4 @@
-// src/app/api/gitlab/commit/route.ts
+// app/api/gitlab/commit/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";

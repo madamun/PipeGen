@@ -94,6 +94,7 @@ export interface PipelineContextType {
   gitFileList: PipelineFile[];
   isSaving: boolean;
   isLoading: boolean;
+  isAnalyzing: boolean;
   renameCurrentFile: (newName: string) => void;
   commitFile: (message: string) => Promise<boolean>;
   discardDraft: () => Promise<boolean>;
