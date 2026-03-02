@@ -1,4 +1,4 @@
-// src/components/workspace/PipelineProvider.tsx
+// packages/components/workspace/PipelineProvider.tsx
 
 "use client";
 
@@ -30,18 +30,11 @@ const PipelineContext = createContext<PipelineContextType | undefined>(
 );
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
-  // --- State ---
-  const [repoProvider, setRepoProvider] = useState<"github" | "gitlab" | null>(
-    null,
-  );
-  const [syntaxProvider, setSyntaxProvider] = useState<"github" | "gitlab">(
-    "github",
-  );
-
+  const [repoProvider, setRepoProvider] = useState<"github" | "gitlab" | null>(null);
+  const [syntaxProvider, setSyntaxProvider] = useState<"github" | "gitlab">("github");
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("main");
 
-  // 3. เพิ่ม useEffect เพื่อเซฟลง localStorage ทันทีที่มีการเปลี่ยน Repo
   useEffect(() => {
     if (selectedRepo) {
       localStorage.setItem("pipegen_last_repo", JSON.stringify(selectedRepo));
@@ -59,23 +52,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         console.error("Failed to parse saved repo", e);
       }
     }
-
     const savedBranch = localStorage.getItem("pipegen_last_branch");
     if (savedBranch) {
       setSelectedBranch(savedBranch);
     }
   }, []);
 
-  //  4. เพิ่ม useEffect เพื่อเซฟลง localStorage ทันทีที่มีการเปลี่ยน Branch
   useEffect(() => {
     if (selectedBranch) {
       localStorage.setItem("pipegen_last_branch", selectedBranch);
     }
   }, [selectedBranch]);
 
-
   const [fileContent, setFileContent] = useState("");
-  const [selectedFile, setSelectedFile] = useState<string>("");
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("");
+
   const [originalContent, setOriginalContent] = useState("");
   const [fileList, setFileList] = useState<PipelineFile[]>([]);
   const [draftList, setDraftList] = useState<PipelineFile[]>([]);
@@ -88,10 +80,119 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
-  const lastSavedContent = useRef<string | null>(null);
   const skipLoadOnce = useRef(false);
 
-  // --- Init: components ---
+  const lastSavedContent = useRef<Record<string, string>>({});
+  const activeFileContext = useRef<string>("");
+
+  const getFullFilePath = useCallback((fileName: string) => {
+    if (!fileName) return "";
+    const existingFile = fileList.find((f) => f.fileName === fileName || f.fullPath === fileName);
+    if (existingFile) return existingFile.fullPath;
+
+    if (selectedRepo?.provider === "gitlab") {
+      if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) return fileName;
+      return `.gitlab/ci/${fileName}`;
+    }
+    return fileName.includes("/") ? fileName : `.github/workflows/${fileName}`;
+  }, [fileList, selectedRepo]);
+
+  const saveDraftToDB = useCallback(
+    async (content: string, tabToSave: string) => {
+      if (!selectedRepo || !tabToSave) return;
+      if (content === lastSavedContent.current[tabToSave]) return;
+      
+      try {
+        setIsSaving(true);
+        const path = getFullFilePath(tabToSave);
+        await fetch("/api/pipeline/draft", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repoFullName: selectedRepo.full_name,
+            filePath: path,
+            content,
+            uiState: { ...componentValues, __syntax: syntaxProvider },
+            branch: selectedBranch,
+          }),
+        });
+        
+        lastSavedContent.current[tabToSave] = content;
+        
+        const shortName = path.split('/').pop() || path;
+        setGitFileList((prev) => prev.filter((f) => f.fullPath !== path));
+        setDraftList((prev) => {
+          if (prev.some((f) => f.fullPath === path)) return prev;
+          return [...prev, { fileName: shortName, fullPath: path, source: 'draft' }];
+        });
+        setFileList((prev) => {
+          if (prev.some((f) => f.fullPath === path && f.source === 'draft')) return prev;
+          const filtered = prev.filter((f) => f.fullPath !== path);
+          return [...filtered, { fileName: shortName, fullPath: path, source: 'draft' }];
+        });
+      } catch (e) {
+        console.error("Save Draft Error:", e);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [selectedRepo, selectedBranch, componentValues, syntaxProvider, getFullFilePath],
+  );
+
+  const handleSetActiveTab = useCallback((tabId: string) => {
+    if (tabId === activeTab) return;
+    if (activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
+      saveDraftToDB(fileContent, activeTab); 
+    }
+    
+    activeFileContext.current = "";
+    setFileContent("");
+    setComponentValues({});
+    
+    setActiveTab(tabId);
+  }, [activeTab, fileContent, saveDraftToDB]);
+
+  const setSelectedFile = useCallback((fileName: string) => {
+    if (!fileName) {
+      handleSetActiveTab("");
+      return;
+    }
+    if (fileName === activeTab) return;
+
+    if (activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
+      saveDraftToDB(fileContent, activeTab);
+    }
+
+    activeFileContext.current = "";
+    setFileContent("");
+    setComponentValues({});
+
+    setOpenTabs((prev) => {
+      if (!prev.includes(fileName)) {
+        return [...prev, fileName];
+      }
+      return prev;
+    });
+    setActiveTab(fileName);
+  }, [activeTab, fileContent, saveDraftToDB, handleSetActiveTab]);
+
+  const closeTab = useCallback((tabIdToClose: string) => {
+    if (tabIdToClose === activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
+      saveDraftToDB(fileContent, activeTab);
+    }
+    setOpenTabs((prevTabs) => {
+      const newTabs = prevTabs.filter((tab) => tab !== tabIdToClose);
+      if (activeTab === tabIdToClose) {
+        const nextActive = newTabs.length > 0 ? newTabs[newTabs.length - 1] : "";
+        activeFileContext.current = "";
+        setFileContent("");
+        setComponentValues({});
+        setActiveTab(nextActive);
+      }
+      return newTabs;
+    });
+  }, [activeTab, fileContent, saveDraftToDB]);
 
   const { data: categoriesData } = useQuery({
     queryKey: ["components"],
@@ -101,11 +202,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return res.json() as Promise<ComponentCategory[]>;
     },
   });
+  
   useEffect(() => {
     if (categoriesData) setCategories(categoriesData);
   }, [categoriesData]);
 
-  // --- Auth providers ---
   const { data: authProvidersData } = useQuery({
     queryKey: ["auth-providers"],
     queryFn: async () => {
@@ -114,6 +215,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return (data.providers || []) as string[];
     },
   });
+  
   useEffect(() => {
     if (!authProvidersData) return;
     if (authProvidersData.includes("github")) {
@@ -125,7 +227,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }, [authProvidersData]);
 
-  // --- Repos ---
   const {
     data: reposResponse,
     isLoading: isLoadingRepos,
@@ -136,32 +237,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     queryKey: ["repos", repoProvider],
     queryFn: async () => {
       if (!repoProvider) return { repos: [] as Repo[] };
-      const endpoint =
-        repoProvider === "gitlab" ? `/api/gitlab/repos` : `/api/github/repos`;
+      const endpoint = repoProvider === "gitlab" ? `/api/gitlab/repos` : `/api/github/repos`;
       const res = await fetch(endpoint, { credentials: "include" });
       const data = await res.json();
-      if (!res.ok)
-        throw new Error(
-          (data as { error?: string })?.error ||
-          (data as { detail?: string })?.detail ||
-          "Failed to load repositories",
-        );
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load repositories");
       return { me: data.me, repos: (data.repos || []) as Repo[] };
     },
     enabled: !!repoProvider,
   });
   const availableRepos = reposResponse?.repos ?? [];
-  const fetchRepos = useCallback(
-    () => refetchRepos().then(() => undefined),
-    [refetchRepos],
-  );
+  const fetchRepos = useCallback(() => refetchRepos().then(() => undefined), [refetchRepos]);
 
   useEffect(() => {
     if (isErrorRepos && errorRepos)
       toast.error(errorRepos instanceof Error ? errorRepos.message : "Failed to load repositories");
   }, [isErrorRepos, errorRepos]);
 
-  // --- Branches ---
   const {
     data: availableBranchesData = [],
     isLoading: isLoadingBranches,
@@ -172,72 +263,31 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     queryKey: ["branches", selectedRepo?.full_name, repoProvider],
     queryFn: async () => {
       if (!selectedRepo?.full_name || !repoProvider) return [];
-      const endpoint =
-        repoProvider === "gitlab"
-          ? `/api/gitlab/branches`
-          : `/api/github/branches`;
-      const res = await fetch(
-        `${endpoint}?full_name=${encodeURIComponent(selectedRepo.full_name)}`,
-        { credentials: "include" },
-      );
+      const endpoint = repoProvider === "gitlab" ? `/api/gitlab/branches` : `/api/github/branches`;
+      const res = await fetch(`${endpoint}?full_name=${encodeURIComponent(selectedRepo.full_name)}`, { credentials: "include" });
       const data = await res.json();
-      if (!res.ok)
-        throw new Error(
-          (data as { error?: string })?.error ||
-          (data as { detail?: string })?.detail ||
-          "Failed to load branches",
-        );
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load branches");
       return (data.branches || []).map((b: { name: string }) => b.name) as string[];
     },
     enabled: !!selectedRepo?.full_name && !!repoProvider,
   });
+  
   const availableBranches = availableBranchesData;
   useEffect(() => {
     if (isErrorBranches && errorBranches)
       toast.error(errorBranches instanceof Error ? errorBranches.message : "Failed to load branches");
   }, [isErrorBranches, errorBranches]);
-  const fetchBranches = useCallback(
-    (_repoFullName: string) => refetchBranches().then(() => undefined),
-    [refetchBranches],
-  );
+  
+  const fetchBranches = useCallback((_repoFullName: string) => refetchBranches().then(() => undefined), [refetchBranches]);
 
-  const isLoading =
-    isLoadingRepos || isLoadingBranches || isLoadingOther;
+  const isLoading = isLoadingRepos || isLoadingBranches || isLoadingOther;
 
   useEffect(() => {
     if (selectedRepo) {
-      if (selectedRepo.provider)
-        setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
+      if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
     }
   }, [selectedRepo]);
 
-  const getFullFilePath = (fileName: string) => {
-    if (!fileName) return "";
-
-    //  1. ท่าไม้ตาย: ไปค้นหาใน fileList ก่อนเลยว่าเรามีประวัติไฟล์นี้ไหม?
-    const existingFile = fileList.find(
-      (f) => f.fileName === fileName || f.fullPath === fileName
-    );
-
-    // ถ้าเจอ! ให้ใช้ fullPath ของมันส่งไป Commit เลย (รับประกันว่าไม่มั่ว)
-    if (existingFile) {
-      return existingFile.fullPath;
-    }
-
-    // 2. ถ้าลงมาถึงตรงนี้ แปลว่าเป็น "ไฟล์ใหม่" ที่ผู้ใช้เพิ่งกดตั้งชื่อเอง (ยังไม่มีใน GitLab)
-    if (selectedRepo?.provider === "gitlab") {
-      if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) {
-        return fileName;
-      }
-      // สำหรับไฟล์ใหม่ของ GitLab ถ้าไม่ได้ใส่โฟลเดอร์มา ให้ไปสร้างใน .gitlab/ci/ เหมือนเดิม
-      return `.gitlab/ci/${fileName}`;
-    }
-
-    // ฝั่ง GitHub (กรณีไฟล์ใหม่)
-    return fileName.includes("/") ? fileName : `.github/workflows/${fileName}`;
-  };
-
-  // --- Setup & Update Actions ---
   const setProvider = (newSyntax: "github" | "gitlab") => {
     setSyntaxProvider(newSyntax);
     isUpdatingFromUI.current = true;
@@ -245,68 +295,36 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     categories.forEach((cat) => {
       cat.components.forEach((comp) => {
         comp.uiConfig?.fields?.forEach((field) => {
-          if (field.platformDefaults?.[newSyntax])
-            nextValues[field.id] = field.platformDefaults[newSyntax];
+          if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax];
         });
       });
     });
     setComponentValues(nextValues);
-    setFileContent(
-      generateYamlFromValues(categories, nextValues, newSyntax, fileContent),
-    );
+    setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, fileContent));
   };
 
-  const updateComponentValue = (
-    id: string,
-    value: string | number | boolean | string[] | undefined,
-  ) => {
+  const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
     const defaultBranch = selectedRepo?.default_branch || "main";
     let finalValue = value;
     let nextValues = { ...componentValues };
 
     const pushBranches = componentValues["push_branches"];
     const prBranches = componentValues["pr_branches"];
-    if (
-      id === "enable_push" &&
-      value === true &&
-      !(Array.isArray(pushBranches) && pushBranches.length > 0)
-    )
+    if (id === "enable_push" && value === true && !(Array.isArray(pushBranches) && pushBranches.length > 0))
       nextValues["push_branches"] = [defaultBranch];
-    if (
-      id === "enable_pr" &&
-      value === true &&
-      !(Array.isArray(prBranches) && prBranches.length > 0)
-    )
+    if (id === "enable_pr" && value === true && !(Array.isArray(prBranches) && prBranches.length > 0))
       nextValues["pr_branches"] = [defaultBranch];
-    if (
-      id === "push_branches" &&
-      componentValues["enable_push"] &&
-      Array.isArray(value) &&
-      value.length === 0
-    )
+    if (id === "push_branches" && componentValues["enable_push"] && Array.isArray(value) && value.length === 0)
       finalValue = [defaultBranch];
-    if (
-      id === "pr_branches" &&
-      componentValues["enable_pr"] &&
-      Array.isArray(value) &&
-      value.length === 0
-    )
+    if (id === "pr_branches" && componentValues["enable_pr"] && Array.isArray(value) && value.length === 0)
       finalValue = [defaultBranch];
 
     nextValues[id] = finalValue;
     setComponentValues(nextValues);
     isUpdatingFromUI.current = true;
-    setFileContent(
-      generateYamlFromValues(
-        categories,
-        nextValues,
-        syntaxProvider,
-        fileContent,
-      ),
-    );
+    setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, fileContent));
   };
 
-  // --- Parser Effect ---
   useEffect(() => {
     if (isUpdatingFromUI.current) {
       isUpdatingFromUI.current = false;
@@ -317,17 +335,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const { detectedSyntax, newValues } = parseYamlToUI(
-      fileContent,
-      categories,
-      syntaxProvider,
-    );
-    if (detectedSyntax !== syntaxProvider)
-      setSyntaxProvider(detectedSyntax as "github" | "gitlab");
+    const { detectedSyntax, newValues } = parseYamlToUI(fileContent, categories, syntaxProvider);
+    if (detectedSyntax !== syntaxProvider) setSyntaxProvider(detectedSyntax as "github" | "gitlab");
     setComponentValues((prev) => ({ ...prev, ...newValues }));
   }, [fileContent, categories]);
 
-  // --- File Ops ---
   const refreshFileList = useCallback(async () => {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
     setIsLoadingOther(true);
@@ -343,9 +355,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         }),
       });
       const res = await fetch(
-        `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}`,
+        `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}&t=${Date.now()}`,
         { credentials: "include", cache: "no-store" },
-
       );
       const data = await res.json();
       setDraftList(data.drafts || []);
@@ -360,19 +371,23 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshFileList();
-    setSelectedFile("");
+    setOpenTabs([]);
+    setActiveTab("");
     setComponentValues({});
   }, [selectedRepo, selectedBranch, refreshFileList]);
 
   useEffect(() => {
+    let ignore = false; 
+
     if (skipLoadOnce.current) {
       skipLoadOnce.current = false;
       return;
     }
-    if (!selectedRepo || !selectedFile || !repoProvider) {
-      if (!selectedFile) {
+    if (!selectedRepo || !activeTab || !repoProvider) {
+      if (!activeTab) {
         setFileContent("");
         setOriginalContent("");
+        activeFileContext.current = ""; 
       }
       return;
     }
@@ -381,112 +396,93 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    activeFileContext.current = "";
+    setFileContent(""); 
+    setComponentValues({});
+
     const loadContent = async () => {
+      let finalContent = "";
       try {
-        const path = getFullFilePath(selectedFile);
+        const path = getFullFilePath(activeTab);
         const params = new URLSearchParams({
           repoFullName: selectedRepo.full_name,
           branch: selectedBranch,
           filePath: path,
         });
         const cacheBuster = `&t=${Date.now()}`;
-        const resGit = await fetch(`/api/pipeline/read?${params.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-        const dataGit = await resGit.json();
+        
+        let dataGit = { content: "" };
+        try {
+          const resGit = await fetch(`/api/pipeline/read?${params.toString()}${cacheBuster}`, {
+            credentials: "include", cache: "no-store",
+          });
+          if (resGit.ok) dataGit = await resGit.json();
+        } catch (e) {}
+        
+        if (ignore) return;
         setOriginalContent(dataGit.content || "");
 
-        const resDraft = await fetch(
-          `/api/pipeline/draft?${params.toString()}`,
-          { credentials: "include", cache: "no-store", },
-        );
-        const dataDraft = await resDraft.json();
+        let dataDraft = { content: "", uiState: null };
+        try {
+          const resDraft = await fetch(
+            `/api/pipeline/draft?${params.toString()}${cacheBuster}`,
+            { credentials: "include", cache: "no-store", }
+          );
+          if (resDraft.ok) dataDraft = await resDraft.json();
+        } catch (e) {}
+
+        if (ignore) return;
 
         if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {
-          setFileContent(dataDraft.content);
+          finalContent = dataDraft.content;
           if (dataDraft.uiState) {
             setComponentValues(dataDraft.uiState);
-            if (dataDraft.uiState.__syntax)
-              setSyntaxProvider(dataDraft.uiState.__syntax);
+            if (dataDraft.uiState.__syntax) setSyntaxProvider(dataDraft.uiState.__syntax);
           }
-          lastSavedContent.current = dataDraft.content;
         } else {
-          setFileContent(dataGit.content || "");
+          finalContent = dataGit.content || "";
           setComponentValues({});
-          if (selectedRepo.provider)
-            setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
-          lastSavedContent.current = dataGit.content || "";
+          if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
         }
+
       } catch (e) {
-        console.error(e);
+        console.error("Critical error in loadContent:", e);
+      } finally {
+        if (!ignore) {
+          lastSavedContent.current[activeTab] = finalContent;
+          activeFileContext.current = activeTab;
+          setFileContent(finalContent);
+        }
       }
     };
+    
     loadContent();
-  }, [selectedRepo, selectedBranch, selectedFile]);
-
-  const saveDraftToDB = useCallback(
-    async (content: string) => {
-      if (
-        !selectedRepo ||
-        !selectedFile ||
-        content === lastSavedContent.current
-      )
-        return;
-      try {
-        setIsSaving(true);
-        const path = getFullFilePath(selectedFile);
-        await fetch("/api/pipeline/draft", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repoFullName: selectedRepo.full_name,
-            filePath: path,
-            content,
-            uiState: { ...componentValues, __syntax: syntaxProvider },
-            branch: selectedBranch,
-          }),
-        });
-        lastSavedContent.current = content;
-        const shortName = path.split('/').pop() || path;
-        setGitFileList((prev) => prev.filter((f) => f.fullPath !== path));
-        setDraftList((prev) => {
-          if (prev.some((f) => f.fullPath === path)) return prev;
-          return [...prev, { fileName: shortName, fullPath: path, source: 'draft' }];
-        });
-        setFileList((prev) => {
-          if (prev.some((f) => f.fullPath === path && f.source === 'draft')) return prev;
-          const filtered = prev.filter((f) => f.fullPath !== path);
-          return [...filtered, { fileName: shortName, fullPath: path, source: 'draft' }];
-        });
-
-      } catch (e) {
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [
-      selectedRepo,
-      selectedBranch,
-      selectedFile,
-      componentValues,
-      syntaxProvider,
-    ],
-  );
+    return () => { ignore = true; }; 
+  }, [selectedRepo, selectedBranch, activeTab, getFullFilePath]);
 
   useEffect(() => {
-    if (!selectedRepo || !selectedFile) return;
-    const timer = setTimeout(() => saveDraftToDB(fileContent), 2000);
+    if (!selectedRepo || !activeTab) return;
+    if (activeFileContext.current !== activeTab) return;
+
+    const timer = setTimeout(() => saveDraftToDB(fileContent, activeTab), 2000);
     return () => clearTimeout(timer);
-  }, [fileContent, selectedRepo, saveDraftToDB, selectedFile]);
+  }, [fileContent, selectedRepo, saveDraftToDB, activeTab]);
 
   const renameCurrentFile = async (newName: string) => {
-    if (!selectedRepo || !newName) return;
+    if (!selectedRepo || !newName || !activeTab) return;
     isRenamingRef.current = true;
-    const oldFilePath = getFullFilePath(selectedFile);
+    
+    const oldFilePath = getFullFilePath(activeTab);
     const newFilePath = getFullFilePath(newName);
-    setSelectedFile(newName);
+
+    setOpenTabs((prev) => prev.map(tab => tab === activeTab ? newFilePath : tab));
+    setActiveTab(newFilePath);
+    
+    const safeContent = activeFileContext.current === activeTab ? fileContent : "";
+
+    lastSavedContent.current[newFilePath] = safeContent;
+    activeFileContext.current = newFilePath;
+
     try {
       setIsSaving(true);
       await fetch("/api/pipeline/draft", {
@@ -496,12 +492,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
           filePath: newFilePath,
-          content: fileContent,
+          content: safeContent, 
           uiState: { ...componentValues, __syntax: syntaxProvider },
           branch: selectedBranch,
         }),
       });
-      lastSavedContent.current = fileContent;
+      
       if (oldFilePath !== newFilePath) {
         await fetch("/api/pipeline/draft", {
           method: "DELETE",
@@ -525,7 +521,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   };
 
   const commitFile = async (message: string) => {
-    if (!selectedRepo || !selectedFile || !repoProvider) return false;
+    if (!selectedRepo || !activeTab || !repoProvider) return false;
     try {
       setIsSaving(true);
       const res = await fetch("/api/pipeline/commit", {
@@ -534,7 +530,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
-          filePath: getFullFilePath(selectedFile),
+          filePath: getFullFilePath(activeTab),
           content: fileContent,
           message,
           branch: selectedBranch,
@@ -553,23 +549,30 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
+  // 🔥 จุดแก้บั๊กผีคืนชีพ: ตัดไฟแต่ต้นลมก่อนสั่ง closeTab
   const discardDraft = async () => {
-    if (!selectedRepo || !selectedFile || !confirm(`Discard?`)) return false;
+    if (!selectedRepo || !activeTab || !confirm(`Discard draft for this file?`)) return false;
     try {
       setIsSaving(true);
+      const tabToClose = activeTab; // ล็อกเป้าหมายไว้ก่อน
       const res = await fetch("/api/pipeline/draft", {
         method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
-          filePath: getFullFilePath(selectedFile),
+          filePath: getFullFilePath(tabToClose),
           branch: selectedBranch,
         }),
       });
       if (res.ok) {
+        // 🟢 เวทมนตร์ล้างผี: ล้างเป้าหมายหน้าจอทิ้งให้หมด ก่อนที่ closeTab จะเช็กเจอว่ามีการเปลี่ยนแปลง
+        activeFileContext.current = ""; 
+        setFileContent("");
+        delete lastSavedContent.current[tabToClose];
+        
         await refreshFileList();
-        setSelectedFile("");
+        closeTab(tabToClose); 
         return true;
       }
     } catch (e) {
@@ -587,14 +590,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/pipeline/analyze", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          branch: selectedBranch,
-          provider: repoProvider,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoFullName: selectedRepo.full_name, branch: selectedBranch, provider: repoProvider }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -602,9 +599,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (data.config) {
-        const targetFileName =
-          repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
-        if (selectedFile !== targetFileName) {
+        const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
+        if (activeTab !== targetFileName) {
           skipLoadOnce.current = true;
           setSelectedFile(targetFileName);
         }
@@ -621,25 +617,23 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
         setComponentValues(newValues);
         isUpdatingFromUI.current = true;
-        setFileContent(
-          generateYamlFromValues(categories, newValues, syntaxProvider, ""),
-        );
+        
+        const generated = generateYamlFromValues(categories, newValues, syntaxProvider, "");
+        setFileContent(generated);
+        
+        lastSavedContent.current[targetFileName] = generated;
+        activeFileContext.current = targetFileName;
+        
         const detected: string[] = [];
         if (data.config.use_node) detected.push("Node.js");
         if (data.config.use_python) detected.push("Python");
         if (data.config.use_go) detected.push("Go");
         if (data.config.use_rust) detected.push("Rust");
         if (data.config.docker_build) detected.push("Docker");
-        toast.success(
-          detected.length
-            ? `Auto Setup complete. Detected: ${detected.join(", ")}`
-            : "Auto Setup complete.",
-        );
+        toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.");
       }
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Auto setup failed. Please configure manually.",
-      );
+      toast.error(e instanceof Error ? e.message : "Auto setup failed. Please configure manually.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -662,7 +656,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         availableBranches,
         fileContent,
         setFileContent,
-        selectedFile,
+        openTabs,
+        setOpenTabs,
+        activeTab,
+        setActiveTab: handleSetActiveTab, 
+        closeTab,
+        selectedFile: activeTab,
         setSelectedFile,
         fileList,
         draftList,
@@ -687,7 +686,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
 export function usePipeline() {
   const context = useContext(PipelineContext);
-  if (!context)
-    throw new Error("usePipeline must be used within a PipelineProvider");
+  if (!context) throw new Error("usePipeline must be used within a PipelineProvider");
   return context;
 }
