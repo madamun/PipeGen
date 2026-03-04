@@ -3,9 +3,6 @@
 import yaml from 'js-yaml';
 import type { ComponentCategory, ComponentValues } from '../types/pipeline';
 
-// =========================================================
-// 1. GENERATOR: UI -> Code (Smart Merge Engine 🧠)
-// =========================================================
 export const generateYamlFromValues = (categories: ComponentCategory[], values: ComponentValues, targetSyntax: string, currentYaml: string) => {
   if (!categories || categories.length === 0) return currentYaml;
 
@@ -32,6 +29,16 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
     }
   });
 
+  const beautifyYaml = (rawYaml: string, syntax: string) => {
+    let formatted = rawYaml;
+    if (syntax === 'github') {
+      formatted = formatted.replace(/\n(\s*)- name:/g, '\n\n$1- name:').replace(/\n{3,}/g, '\n\n');
+      formatted = formatted.replace(/steps:\s*\n\n(\s*)- name:/g, 'steps:\n$1- name:');
+    } else if (syntax === 'gitlab') {
+      formatted = formatted.replace(/\n([a-zA-Z0-9_-]+):\n\s+stage:/g, '\n\n$1:\n  stage:').replace(/\n{3,}/g, '\n\n');
+    }
+    return formatted;
+  };
   try {
     if (currentYaml && currentYaml.trim() && !currentYaml.startsWith("# Error")) {
       const doc = yaml.load(currentYaml) as any;
@@ -79,10 +86,13 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
                   const syntax = comp.syntaxes?.find(s => s.platform === 'github');
                   if (!syntax || !syntax.template) return;
 
-                  // 🟢 อัปเกรด: หาว่าสเตปนี้อยู่ตรงไหนในโค้ดผู้ใช้ โดยกวาดหาเป็น "บล็อก" (Block)
                   let tplAstRaw: any[] = [];
                   try {
-                    tplAstRaw = yaml.load(syntax.template) as any[];
+                    // 🔥 ครอบฟันหนูให้ตัวแปรที่เปลือยอยู่ (เช่น run: {{cmd}}) AST จะได้ไม่ Error!
+                    const safeTemplate = syntax.template
+                      .replace(/:\s*({{.*?}})/g, ': "$1"')
+                      .replace(/-\s*({{.*?}})/g, '- "$1"');
+                    tplAstRaw = yaml.load(safeTemplate) as any[];
                   } catch(e) {}
 
                   let startIndex = -1;
@@ -92,7 +102,6 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
                     for (let i = 0; i < targetJob.steps.length; i++) {
                       const userStep = targetJob.steps[i];
                       const isMatch = tplAstRaw.some((tplStep: any) => {
-                        // เช็กด้วย uses (แม่นสุด) หรือ name ตรงเป๊ะ
                         if (tplStep.uses && userStep.uses && userStep.uses.split('@')[0] === tplStep.uses.split('@')[0]) return true;
                         if (tplStep.name && userStep.name && userStep.name === tplStep.name) return true;
                         return false;
@@ -100,10 +109,10 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
 
                       if (isMatch) {
                         if (startIndex === -1) {
-                          startIndex = i; // เจอสเตปแรกของบล็อกแล้ว!
+                          startIndex = i;
                           deleteCount = 1;
                         } else if (i === startIndex + deleteCount) {
-                          deleteCount++; // ถ้าติดกันก็นับรวบยอดไปเลย (เช่น เจอ Setup Node แล้วต่อด้วย Install)
+                          deleteCount++; 
                         }
                       }
                     }
@@ -118,16 +127,13 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
                     const parsedSteps = yaml.load(template) as any[];
                     if (parsedSteps && parsedSteps.length > 0) {
                       if (startIndex >= 0) {
-                        // 🔥 แทนที่บล็อกเดิมทั้งหมดด้วยบล็อกใหม่
                         targetJob.steps.splice(startIndex, deleteCount, ...parsedSteps);
                       } else {
-                        // ถ้าไม่เคยมีเลย ถึงจะเอาไปต่อท้ายสุด
                         targetJob.steps.push(...parsedSteps);
                       }
                     }
                   } else {
                     if (startIndex >= 0) {
-                      // 🔥 ถ้าผู้ใช้ปิดสวิตช์ ให้ลบเกลี้ยงทั้งบล็อก
                       targetJob.steps.splice(startIndex, deleteCount);
                     }
                   }
@@ -135,7 +141,7 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
               });
             }
           }
-          return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+          return beautifyYaml(yaml.dump(doc, { lineWidth: -1, noRefs: true }), targetSyntax);
 
         } else {
           // GitLab Merge
@@ -181,7 +187,7 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
             });
           });
 
-          return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+          return beautifyYaml(yaml.dump(doc, { lineWidth: -1, noRefs: true }), targetSyntax);
         }
       }
     }
@@ -244,7 +250,7 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
     });
   });
 
-  return baseYaml + additionalCode;
+  return beautifyYaml(baseYaml + additionalCode, targetSyntax);
 };
 
 // =========================================================
@@ -309,7 +315,11 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
           let extractedVars: Record<string, string> = {};
 
           try {
-            const tplAst = yaml.load(syntax.template) as any;
+            // 🔥 ป้องกัน AST ขากลับพังเช่นกัน
+            const safeTemplate = syntax.template
+              .replace(/:\s*({{.*?}})/g, ': "$1"')
+              .replace(/-\s*({{.*?}})/g, '- "$1"');
+            const tplAst = yaml.load(safeTemplate) as any;
 
             if (detected === 'github' && doc.jobs) {
               const jobKeys = Object.keys(doc.jobs);

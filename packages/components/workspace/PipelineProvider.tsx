@@ -101,7 +101,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     async (content: string, tabToSave: string) => {
       if (!selectedRepo || !tabToSave) return;
       if (content === lastSavedContent.current[tabToSave]) return;
-      
+
       try {
         setIsSaving(true);
         const path = getFullFilePath(tabToSave);
@@ -117,9 +117,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             branch: selectedBranch,
           }),
         });
-        
+
         lastSavedContent.current[tabToSave] = content;
-        
+
         const shortName = path.split('/').pop() || path;
         setGitFileList((prev) => prev.filter((f) => f.fullPath !== path));
         setDraftList((prev) => {
@@ -143,13 +143,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const handleSetActiveTab = useCallback((tabId: string) => {
     if (tabId === activeTab) return;
     if (activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
-      saveDraftToDB(fileContent, activeTab); 
+      saveDraftToDB(fileContent, activeTab);
     }
-    
+
     activeFileContext.current = "";
     setFileContent("");
     setComponentValues({});
-    
+
     setActiveTab(tabId);
   }, [activeTab, fileContent, saveDraftToDB]);
 
@@ -202,7 +202,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return res.json() as Promise<ComponentCategory[]>;
     },
   });
-  
+
   useEffect(() => {
     if (categoriesData) setCategories(categoriesData);
   }, [categoriesData]);
@@ -215,7 +215,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return (data.providers || []) as string[];
     },
   });
-  
+
   useEffect(() => {
     if (!authProvidersData) return;
     if (authProvidersData.includes("github")) {
@@ -271,13 +271,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     },
     enabled: !!selectedRepo?.full_name && !!repoProvider,
   });
-  
+
   const availableBranches = availableBranchesData;
   useEffect(() => {
     if (isErrorBranches && errorBranches)
       toast.error(errorBranches instanceof Error ? errorBranches.message : "Failed to load branches");
   }, [isErrorBranches, errorBranches]);
-  
+
   const fetchBranches = useCallback((_repoFullName: string) => refetchBranches().then(() => undefined), [refetchBranches]);
 
   const isLoading = isLoadingRepos || isLoadingBranches || isLoadingOther;
@@ -289,6 +289,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }, [selectedRepo]);
 
   const setProvider = (newSyntax: "github" | "gitlab") => {
+    if (newSyntax === syntaxProvider) return; 
     setSyntaxProvider(newSyntax);
     isUpdatingFromUI.current = true;
     const nextValues = { ...componentValues };
@@ -300,7 +301,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       });
     });
     setComponentValues(nextValues);
-    setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, fileContent));
+
+    setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, ""));
   };
 
   const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
@@ -377,7 +379,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }, [selectedRepo, selectedBranch, refreshFileList]);
 
   useEffect(() => {
-    let ignore = false; 
+    let ignore = false;
 
     if (skipLoadOnce.current) {
       skipLoadOnce.current = false;
@@ -387,7 +389,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (!activeTab) {
         setFileContent("");
         setOriginalContent("");
-        activeFileContext.current = ""; 
+        activeFileContext.current = "";
       }
       return;
     }
@@ -397,7 +399,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
 
     activeFileContext.current = "";
-    setFileContent(""); 
+    setFileContent("");
     setComponentValues({});
 
     const loadContent = async () => {
@@ -410,15 +412,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           filePath: path,
         });
         const cacheBuster = `&t=${Date.now()}`;
-        
+
         let dataGit = { content: "" };
         try {
           const resGit = await fetch(`/api/pipeline/read?${params.toString()}${cacheBuster}`, {
             credentials: "include", cache: "no-store",
           });
           if (resGit.ok) dataGit = await resGit.json();
-        } catch (e) {}
-        
+        } catch (e) { }
+
         if (ignore) return;
         setOriginalContent(dataGit.content || "");
 
@@ -429,7 +431,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             { credentials: "include", cache: "no-store", }
           );
           if (resDraft.ok) dataDraft = await resDraft.json();
-        } catch (e) {}
+        } catch (e) { }
 
         if (ignore) return;
 
@@ -455,9 +457,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    
+
     loadContent();
-    return () => { ignore = true; }; 
+    return () => { ignore = true; };
   }, [selectedRepo, selectedBranch, activeTab, getFullFilePath]);
 
   useEffect(() => {
@@ -471,13 +473,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const renameCurrentFile = async (newName: string) => {
     if (!selectedRepo || !newName || !activeTab) return;
     isRenamingRef.current = true;
-    
+
     const oldFilePath = getFullFilePath(activeTab);
     const newFilePath = getFullFilePath(newName);
 
     setOpenTabs((prev) => prev.map(tab => tab === activeTab ? newFilePath : tab));
     setActiveTab(newFilePath);
-    
+
     const safeContent = activeFileContext.current === activeTab ? fileContent : "";
 
     lastSavedContent.current[newFilePath] = safeContent;
@@ -492,12 +494,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           repoFullName: selectedRepo.full_name,
           filePath: newFilePath,
-          content: safeContent, 
+          content: safeContent,
           uiState: { ...componentValues, __syntax: syntaxProvider },
           branch: selectedBranch,
         }),
       });
-      
+
       if (oldFilePath !== newFilePath) {
         await fetch("/api/pipeline/draft", {
           method: "DELETE",
@@ -567,12 +569,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         // 🟢 เวทมนตร์ล้างผี: ล้างเป้าหมายหน้าจอทิ้งให้หมด ก่อนที่ closeTab จะเช็กเจอว่ามีการเปลี่ยนแปลง
-        activeFileContext.current = ""; 
+        activeFileContext.current = "";
         setFileContent("");
         delete lastSavedContent.current[tabToClose];
-        
+
         await refreshFileList();
-        closeTab(tabToClose); 
+        closeTab(tabToClose);
         return true;
       }
     } catch (e) {
@@ -617,13 +619,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
         setComponentValues(newValues);
         isUpdatingFromUI.current = true;
-        
+
         const generated = generateYamlFromValues(categories, newValues, syntaxProvider, "");
         setFileContent(generated);
-        
+
         lastSavedContent.current[targetFileName] = generated;
         activeFileContext.current = targetFileName;
-        
+
         const detected: string[] = [];
         if (data.config.use_node) detected.push("Node.js");
         if (data.config.use_python) detected.push("Python");
@@ -659,7 +661,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         openTabs,
         setOpenTabs,
         activeTab,
-        setActiveTab: handleSetActiveTab, 
+        setActiveTab: handleSetActiveTab,
         closeTab,
         selectedFile: activeTab,
         setSelectedFile,
