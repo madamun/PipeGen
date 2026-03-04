@@ -1,17 +1,16 @@
-// src/lib/pipelineEngine.ts
+// packages/lib/pipelineEngine.ts
 
 import yaml from 'js-yaml';
 import type { ComponentCategory, ComponentValues } from '../types/pipeline';
 
 // =========================================================
-// 1. GENERATOR: เปลี่ยน UI (Values) ให้กลายเป็น YAML Code
+// 1. GENERATOR: UI -> Code (Smart Merge Engine 🧠)
 // =========================================================
 export const generateYamlFromValues = (categories: ComponentCategory[], values: ComponentValues, targetSyntax: string, currentYaml: string) => {
   if (!categories || categories.length === 0) return currentYaml;
 
   const allContext: Record<string, string | number | boolean | string[] | undefined> = {};
 
-  // 1. โหลด Default Values ก่อนเสมอ
   categories.forEach(cat => {
     cat.components.forEach((comp) => {
       comp.uiConfig?.fields?.forEach((field) => {
@@ -24,26 +23,180 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
     });
   });
 
-  // 2. 🔥 แก้จุดนี้: เอาค่าจาก UI (values) มาทับเฉพาะ "ตอนที่มันมีค่าจริงๆ" เท่านั้น!
   Object.keys(values).forEach(key => {
     const val = values[key];
     if (typeof val === 'boolean') {
-      allContext[key] = val; // Switch (true/false) ให้ทับได้เลย
+      allContext[key] = val;
     } else if (val !== "" && val !== null && val !== undefined) {
-      allContext[key] = val; // Input/Dropdown ต้องมีค่า (ไม่ใช่ช่องว่าง) ถึงจะให้ทับ Default
+      allContext[key] = val;
     }
   });
 
+  try {
+    if (currentYaml && currentYaml.trim() && !currentYaml.startsWith("# Error")) {
+      const doc = yaml.load(currentYaml) as any;
+      
+      if (doc && typeof doc === 'object') {
+        
+        if (targetSyntax === 'github') {
+          if (allContext['pipeline_name']) doc.name = allContext['pipeline_name'];
+
+          if (!doc.on) doc.on = {};
+          if (typeof doc.on === 'string') doc.on = { [doc.on]: null };
+          else if (Array.isArray(doc.on)) {
+            const newOn: any = {};
+            doc.on.forEach((e: string) => newOn[e] = null);
+            doc.on = newOn;
+          }
+
+          if (allContext['enable_push']) {
+            doc.on.push = doc.on.push || {};
+            doc.on.push.branches = allContext['push_branches'] || ['main'];
+          } else { delete doc.on.push; }
+
+          if (allContext['enable_pr']) {
+            doc.on.pull_request = doc.on.pull_request || {};
+            doc.on.pull_request.branches = allContext['pr_branches'] || ['main'];
+          } else { delete doc.on.pull_request; }
+
+          if (allContext['enable_schedule'] && allContext['cron_expression']) {
+            doc.on.schedule = [{ cron: String(allContext['cron_expression']).trim() }];
+          } else { delete doc.on.schedule; }
+
+          if (doc.jobs) {
+            const jobKeys = Object.keys(doc.jobs);
+            if (jobKeys.length > 0) {
+              const targetJob = doc.jobs[jobKeys[0]];
+              if (!targetJob.steps) targetJob.steps = [];
+
+              categories.forEach(cat => {
+                cat.components.forEach(comp => {
+                  if (comp.name.includes("Trigger") || comp.name.includes("Project Info") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
+
+                  const switchField = comp.uiConfig?.fields?.find(f => f.type === 'switch');
+                  const isActive = comp.type === 'group' ? (switchField ? allContext[switchField.id] === true : true) : allContext[comp.id] === true;
+
+                  const syntax = comp.syntaxes?.find(s => s.platform === 'github');
+                  if (!syntax || !syntax.template) return;
+
+                  // 🟢 อัปเกรด: หาว่าสเตปนี้อยู่ตรงไหนในโค้ดผู้ใช้ โดยกวาดหาเป็น "บล็อก" (Block)
+                  let tplAstRaw: any[] = [];
+                  try {
+                    tplAstRaw = yaml.load(syntax.template) as any[];
+                  } catch(e) {}
+
+                  let startIndex = -1;
+                  let deleteCount = 0;
+
+                  if (Array.isArray(tplAstRaw)) {
+                    for (let i = 0; i < targetJob.steps.length; i++) {
+                      const userStep = targetJob.steps[i];
+                      const isMatch = tplAstRaw.some((tplStep: any) => {
+                        // เช็กด้วย uses (แม่นสุด) หรือ name ตรงเป๊ะ
+                        if (tplStep.uses && userStep.uses && userStep.uses.split('@')[0] === tplStep.uses.split('@')[0]) return true;
+                        if (tplStep.name && userStep.name && userStep.name === tplStep.name) return true;
+                        return false;
+                      });
+
+                      if (isMatch) {
+                        if (startIndex === -1) {
+                          startIndex = i; // เจอสเตปแรกของบล็อกแล้ว!
+                          deleteCount = 1;
+                        } else if (i === startIndex + deleteCount) {
+                          deleteCount++; // ถ้าติดกันก็นับรวบยอดไปเลย (เช่น เจอ Setup Node แล้วต่อด้วย Install)
+                        }
+                      }
+                    }
+                  }
+
+                  if (isActive) {
+                    let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => {
+                      const val = allContext[variableName];
+                      return val !== undefined ? String(val) : match;
+                    });
+
+                    const parsedSteps = yaml.load(template) as any[];
+                    if (parsedSteps && parsedSteps.length > 0) {
+                      if (startIndex >= 0) {
+                        // 🔥 แทนที่บล็อกเดิมทั้งหมดด้วยบล็อกใหม่
+                        targetJob.steps.splice(startIndex, deleteCount, ...parsedSteps);
+                      } else {
+                        // ถ้าไม่เคยมีเลย ถึงจะเอาไปต่อท้ายสุด
+                        targetJob.steps.push(...parsedSteps);
+                      }
+                    }
+                  } else {
+                    if (startIndex >= 0) {
+                      // 🔥 ถ้าผู้ใช้ปิดสวิตช์ ให้ลบเกลี้ยงทั้งบล็อก
+                      targetJob.steps.splice(startIndex, deleteCount);
+                    }
+                  }
+                });
+              });
+            }
+          }
+          return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+
+        } else {
+          // GitLab Merge
+          if (!doc.workflow) doc.workflow = {};
+          doc.workflow.rules = [];
+          const pushBranches: string[] = Array.isArray(allContext['push_branches']) ? allContext['push_branches'] : ['main'];
+          const prBranches: string[] = Array.isArray(allContext['pr_branches']) ? allContext['pr_branches'] : ['main'];
+
+          if (allContext['enable_push']) pushBranches.forEach(b => doc.workflow.rules.push({ if: `$CI_COMMIT_BRANCH == "${b}"` }));
+          if (allContext['enable_pr']) prBranches.forEach(b => doc.workflow.rules.push({ if: `$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "${b}"` }));
+          if (doc.workflow.rules.length === 0) doc.workflow.rules.push({ when: 'manual' });
+
+          if (allContext['use_include'] && Array.isArray(allContext['include_paths']) && allContext['include_paths'].length > 0) {
+            doc.include = allContext['include_paths'].map((p: string) => ({ local: p }));
+          } else { delete doc.include; }
+
+          categories.forEach(cat => {
+            cat.components.forEach(comp => {
+              if (comp.name.includes("Trigger") || comp.name.includes("Project Info") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
+
+              const switchField = comp.uiConfig?.fields?.find(f => f.type === 'switch');
+              const isActive = comp.type === 'group' ? (switchField ? allContext[switchField.id] === true : true) : allContext[comp.id] === true;
+
+              const syntax = comp.syntaxes?.find(s => s.platform === 'gitlab');
+              if (!syntax || !syntax.template) return;
+
+              let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => {
+                const val = allContext[variableName];
+                return val !== undefined ? String(val) : match;
+              });
+
+              try {
+                const parsedJob = yaml.load(template) as Record<string, any>;
+                if (!parsedJob) return;
+                const jobKeys = Object.keys(parsedJob);
+
+                if (isActive) {
+                  jobKeys.forEach(k => doc[k] = parsedJob[k]);
+                } else {
+                  jobKeys.forEach(k => delete doc[k]);
+                }
+              } catch(e) {}
+            });
+          });
+
+          return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Smart merge failed, falling back to scratch generation");
+  }
+
+  // Fallback Generation
   const pipelineName = allContext['pipeline_name'] || "My-Pipeline";
   const runnerOS = allContext['runner_os'] || "ubuntu-latest";
   const checkoutVer = allContext['checkout_ver'] || "v4";
 
-  let baseYaml = "";
-  if (targetSyntax === 'github') {
-    baseYaml = `name: ${pipelineName}\non:\n{{TRIGGER_BLOCK}}\njobs:\n  build-and-deploy:\n    runs-on: ${runnerOS}\n    steps:\n      - name: Checkout Code\n        uses: actions/checkout@${checkoutVer}`;
-  } else {
-    baseYaml = `# Pipeline: ${pipelineName}\nworkflow:\n  rules:\n{{TRIGGER_BLOCK}}\ncache:\n  key: "$CI_COMMIT_REF_SLUG"\n  paths:\n    - node_modules/\n  policy: pull-push\n\nstages:\n  - setup\n  - test\n  - build\n  - deploy\n`;
-  }
+  let baseYaml = targetSyntax === 'github' 
+    ? `name: ${pipelineName}\non:\n{{TRIGGER_BLOCK}}\njobs:\n  build-and-deploy:\n    runs-on: ${runnerOS}\n    steps:\n      - name: Checkout Code\n        uses: actions/checkout@${checkoutVer}`
+    : `# Pipeline: ${pipelineName}\nworkflow:\n  rules:\n{{TRIGGER_BLOCK}}\ncache:\n  key: "$CI_COMMIT_REF_SLUG"\n  paths:\n    - node_modules/\n  policy: pull-push\n\nstages:\n  - setup\n  - test\n  - build\n  - deploy\n`;
 
   let triggerBlock = "";
   if (targetSyntax === 'github') {
@@ -64,16 +217,7 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
 
   baseYaml = baseYaml.replace("{{TRIGGER_BLOCK}}", triggerBlock);
 
-  // Computed: Slack notify condition for GitHub Actions if: expression
-  const slackOn = allContext['slack_notify_on'];
-  if (slackOn === 'always') allContext['slack_notify_if'] = 'always()';
-  else if (slackOn === 'on_success') allContext['slack_notify_if'] = 'success()';
-  else if (slackOn === 'on_failure') allContext['slack_notify_if'] = 'failure()';
-  else allContext['slack_notify_if'] = 'failure()';
-
-  let stepsCode = "";
-  let jobsCode = "";
-
+  let additionalCode = "";
   categories.forEach(cat => {
     cat.components.forEach((comp) => {
       if (comp.name.includes("Trigger") || comp.name.includes("Project Info") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
@@ -84,46 +228,72 @@ export const generateYamlFromValues = (categories: ComponentCategory[], values: 
       if (isActive && comp.syntaxes) {
         const syntax = comp.syntaxes.find((s) => s.platform === targetSyntax);
         if (syntax && syntax.template) {
-          
-          // 1. แปลงค่าตัวแปร (รองรับ Array สำหรับ include_paths ของ GitLab)
           let template = syntax.template.replace(/{{([^}]+)}}/g, (match: string, variableName: string) => {
             const val = allContext[variableName];
             if (val !== undefined) {
-              // เช็คว่าเป็น include_paths หรือไม่ ถ้าใช่ให้แปลงเป็น List สำหรับ YAML
               if (Array.isArray(val) && variableName === 'include_paths') {
-                if (val.length === 0) return '';
-                return val.map(p => `\n  - local: '${p}'`).join('');
+                return val.length === 0 ? '' : val.map(p => `\n  - local: '${p}'`).join('');
               }
               return String(val);
             }
             return match;
           });
-
-          // ป้องกันการสร้างบล็อก include: เปล่าๆ
-          if (template.trim() === 'include:') return;
-          targetSyntax === 'github' ? stepsCode += "\n" + template : jobsCode += "\n" + template;
+          if (template.trim() !== 'include:') additionalCode += "\n" + template;
         }
       }
     });
   });
 
-  return targetSyntax === 'github' ? baseYaml + stepsCode : baseYaml + jobsCode;
+  return baseYaml + additionalCode;
 };
 
 // =========================================================
-// 2. PARSER: อ่าน YAML Code กลับมาเป็น UI (Values) แบบอัจฉริยะ 🧠
+// 2. PARSER: Code -> UI (AST Recursive Diffing 🧠)
 // =========================================================
+
+const extractVarsFromAST = (templateObj: any, actualObj: any): Record<string, string> => {
+  let extracted: Record<string, string> = {};
+  
+  if (typeof templateObj === 'string' && actualObj !== undefined && actualObj !== null) {
+    const strActual = String(actualObj);
+    const regexVar = /{{(.*?)}}/g;
+    const varNames: string[] = [];
+    let m;
+    while ((m = regexVar.exec(templateObj)) !== null) varNames.push(m[1]);
+
+    if (varNames.length > 0) {
+      let pattern = templateObj.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      varNames.forEach(v => { pattern = pattern.replace(`\\{\\{${v}\\}\\}`, '(.*)'); });
+      
+      const match = strActual.match(new RegExp(`^${pattern}$`));
+      if (match) {
+        varNames.forEach((v, i) => { extracted[v] = match[i + 1]; });
+      }
+    }
+  } else if (Array.isArray(templateObj) && Array.isArray(actualObj)) {
+    for (let i = 0; i < Math.min(templateObj.length, actualObj.length); i++) {
+      extracted = { ...extracted, ...extractVarsFromAST(templateObj[i], actualObj[i]) };
+    }
+  } else if (typeof templateObj === 'object' && templateObj !== null && typeof actualObj === 'object' && actualObj !== null) {
+    for (const k of Object.keys(templateObj)) {
+      if (actualObj[k] !== undefined) {
+        extracted = { ...extracted, ...extractVarsFromAST(templateObj[k], actualObj[k]) };
+      }
+    }
+  }
+  return extracted;
+};
+
 export const parseYamlToUI = (fileContent: string, categories: ComponentCategory[], currentSyntax: string) => {
   if (!fileContent || !fileContent.trim()) return { detectedSyntax: currentSyntax, newValues: {} };
 
   try {
-    const doc = yaml.load(fileContent) as Record<string, unknown> | null;
+    const doc = yaml.load(fileContent) as Record<string, any>;
     if (!doc || typeof doc !== 'object') return { detectedSyntax: currentSyntax, newValues: {} };
 
     let detected = currentSyntax;
-    const docAny = doc as Record<string, unknown>;
-    if (docAny.workflow || docAny.stages || (docAny.include && !docAny.on)) detected = 'gitlab';
-    else if (docAny.on) detected = 'github';
+    if (doc.workflow || doc.stages || (doc.include && !doc.on)) detected = 'gitlab';
+    else if (doc.on || doc.jobs) detected = 'github';
 
     const newValues: ComponentValues = {};
 
@@ -131,191 +301,114 @@ export const parseYamlToUI = (fileContent: string, categories: ComponentCategory
       cat.components.forEach((comp) => {
         const syntax = comp.syntaxes?.find((s) => s.platform === detected);
         const mainSwitch = comp.uiConfig?.fields?.find((f) => f.type === 'switch');
+        
+        if (comp.name.includes("Project Info") || comp.name.includes("Trigger") || comp.name.includes("General Settings") || comp.name.includes("System & Runner")) return;
 
         if (syntax && syntax.template) {
-          const lines = syntax.template.split('\n');
-          const signatureLine = lines.find((l: string) => l.trim().length > 5 && !l.includes('{{') && !l.includes('}}'));
-
           let isDetected = false;
-          if (signatureLine && fileContent.includes(signatureLine.trim())) {
-            isDetected = true;
-          } else if (comp.name.includes("Project Info") && docAny.name) {
-            isDetected = true;
+          let extractedVars: Record<string, string> = {};
+
+          try {
+            const tplAst = yaml.load(syntax.template) as any;
+
+            if (detected === 'github' && doc.jobs) {
+              const jobKeys = Object.keys(doc.jobs);
+              if (jobKeys.length > 0 && Array.isArray(tplAst) && tplAst.length > 0) {
+                const userSteps = doc.jobs[jobKeys[0]].steps || [];
+                
+                tplAst.forEach((tplStep: any) => {
+                  const targetStep = userSteps.find((s: any) => {
+                    if (tplStep.uses && s.uses && s.uses.startsWith(tplStep.uses.split('@')[0])) return true;
+                    if (tplStep.run && s.run && s.run.includes(tplStep.run.split(' ')[0])) return true;
+                    if (tplStep.name && s.name === tplStep.name) return true;
+                    return false;
+                  });
+
+                  if (targetStep) {
+                    isDetected = true;
+                    extractedVars = { ...extractedVars, ...extractVarsFromAST(tplStep, targetStep) };
+                  }
+                });
+              }
+            } else if (detected === 'gitlab' && tplAst && typeof tplAst === 'object') {
+              const tplJobName = Object.keys(tplAst)[0];
+              if (tplJobName && doc[tplJobName]) {
+                isDetected = true;
+                extractedVars = extractVarsFromAST(tplAst[tplJobName], doc[tplJobName]); 
+              }
+            }
+          } catch (e) {
+            const lines = syntax.template.split('\n');
+            const signature = lines.find((l: string) => l.trim().length > 5 && !l.includes('{{'))?.trim();
+            if (signature && fileContent.includes(signature)) isDetected = true;
           }
 
           if (isDetected) {
             if (mainSwitch) newValues[mainSwitch.id] = true;
-
-            lines.forEach((templateLine: string) => {
-              const regexVar = /{{(.*?)}}/g;
-              const varsInLine: string[] = [];
-              let m;
-              while ((m = regexVar.exec(templateLine)) !== null) {
-                varsInLine.push(m[1]);
-              }
-
-              if (varsInLine.length > 0) {
-                const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                let patternStr = escapeRegExp(templateLine.trim());
-
-                varsInLine.forEach(v => {
-                  const escapedVar = `\\{\\{${v}\\}\\}`;
-                  patternStr = patternStr.replace(`'${escapedVar}'`, `['"]?(.*)['"]?`);
-                  patternStr = patternStr.replace(`"${escapedVar}"`, `['"]?(.*)['"]?`);
-                  patternStr = patternStr.replace(escapedVar, `(.*)`);
-                });
-
-                patternStr = patternStr.replace(/\\ /g, '\\s+');
-                const finalRegex = new RegExp(`^\\s*${patternStr}`, 'gm');
-                const contentMatches = [...fileContent.matchAll(finalRegex)];
-
-                if (contentMatches.length > 0) {
-                  varsInLine.forEach((v, vIdx) => {
-                    const field = comp.uiConfig?.fields?.find((f) => f.id === v);
-                    let matchedValue = "";
-
-                    for (const match of contentMatches) {
-                      if (match[vIdx + 1] !== undefined) {
-                        let val = match[vIdx + 1].trim();
-                        val = val.replace(/^['"]|['"]$/g, '');
-
-                        if (val === "|" || val === ">" || val === "") continue;
-
-                        if (field && field.type === 'select' && field.options) {
-
-                          const isValidOption = field.options.some((opt: any) => opt.value === val);
-
-                          if (isValidOption) {
-                            matchedValue = val;
-                            break; // ถูกต้อง ตรงเป๊ะ เซฟได้!
-                          } else {
-                            continue; // ❌ ถ้าเป็นค่ามั่วๆ ข้ามไปเลย ไม่ต้องเอามาพัง State เรา!
-                          }
-                        } else {
-                          // ถ้าเป็น Text Input ธรรมดา (ไม่ใช่ Dropdown) ก็รับค่าปกติ
-                          matchedValue = val;
-                          break;
-                        }
-                      }
-                    }
-
-                    if (matchedValue !== "") {
-                      // 🔥 แก้บั๊กตรงนี้: ถ้าเคยดึงค่าของตัวแปรนี้ได้แล้ว (จากบรรทัดบน)
-                      // ห้ามให้บรรทัดล่างมาเขียนทับเด็ดขาด! (First come, first serve)
-                      if (newValues[v] === undefined) {
-                        newValues[v] = matchedValue;
-                      }
-                    }
-                  });
-                }
+            
+            Object.keys(extractedVars).forEach(k => {
+              const field = comp.uiConfig?.fields?.find(f => f.id === k);
+              const val = extractedVars[k].replace(/^['"]|['"]$/g, '').trim();
+              if (field && field.type === 'select' && field.options) {
+                const isValid = field.options.some((o: any) => o.value === val);
+                if (isValid) newValues[k] = val;
+              } else {
+                newValues[k] = val;
               }
             });
-
-            if (comp.name.includes("Project Info") && docAny.name) {
-              newValues['pipeline_name'] = String(docAny.name);
-            }
-
           } else {
             if (mainSwitch) newValues[mainSwitch.id] = false;
           }
-        } else {
-          if (mainSwitch) newValues[mainSwitch.id] = false;
         }
       });
     });
 
-if (detected === 'github') {
-      const on = docAny.on as {
-        push?: { branches?: string[] };
-        pull_request?: { branches?: string[] };
-        schedule?: { cron: string }[];
-      } | undefined;
-      if (on?.push?.branches) {
-        newValues['enable_push'] = true;
-        newValues['push_branches'] = on.push.branches;
-      } else { newValues['enable_push'] = false; }
+    if (doc.name) newValues['pipeline_name'] = doc.name;
 
-      if (on?.pull_request?.branches) {
-        newValues['enable_pr'] = true;
-        newValues['pr_branches'] = on.pull_request.branches;
-      } else { newValues['enable_pr'] = false; }
+    if (detected === 'github') {
+      const on = doc.on;
+      if (on) {
+        if (on.push) {
+          newValues['enable_push'] = true;
+          newValues['push_branches'] = Array.isArray(on.push.branches) ? on.push.branches : [];
+        } else { newValues['enable_push'] = false; }
 
-      if (on?.schedule?.length && on.schedule[0]?.cron) {
-        newValues['enable_schedule'] = true;
-        newValues['cron_expression'] = on.schedule[0].cron;
-      } else { newValues['enable_schedule'] = false; }
-    }
+        if (on.pull_request) {
+          newValues['enable_pr'] = true;
+          newValues['pr_branches'] = Array.isArray(on.pull_request.branches) ? on.pull_request.branches : [];
+        } else { newValues['enable_pr'] = false; }
 
-    if (detected === 'gitlab') {
-
-      // 1. จัดการเรื่อง Include Files
-      if (docAny.include) {
-        // ดึง path ออกมาไม่ว่า user จะเขียนเป็น array หรือเป็นค่าเดียว
-        const includeArray = Array.isArray(docAny.include) ? docAny.include : [docAny.include];
+        if (on.schedule && Array.isArray(on.schedule) && on.schedule.length > 0 && on.schedule[0].cron) {
+          newValues['enable_schedule'] = true;
+          newValues['cron_expression'] = on.schedule[0].cron;
+        } else { newValues['enable_schedule'] = false; }
+      }
+    } else if (detected === 'gitlab') {
+      if (doc.include) {
+        const incArray = Array.isArray(doc.include) ? doc.include : [doc.include];
         const paths: string[] = [];
-        includeArray.forEach(inc => {
+        incArray.forEach((inc: any) => {
           if (typeof inc === 'string') paths.push(inc);
-          else if (inc && typeof inc === 'object' && (inc as Record<string, any>).local) {
-            paths.push((inc as Record<string, any>).local);
-          }
+          else if (inc && inc.local) paths.push(inc.local);
         });
-
         if (paths.length > 0) {
           newValues['use_include'] = true;
           newValues['include_paths'] = paths;
-        } else {
-          newValues['use_include'] = false;
-          newValues['include_paths'] = [];
         }
-      } else {
-        newValues['use_include'] = false;
-        newValues['include_paths'] = [];
       }
-
-      // 2. จัดการเรื่อง Triggers (Branch / PR)
-      const workflow = docAny.workflow as { rules?: { if?: string }[] } | undefined;
-
-      if (workflow && workflow.rules) {
+      if (doc.workflow && doc.workflow.rules) {
         const pushBranches: string[] = [];
         const prBranches: string[] = [];
-
-        workflow.rules.forEach(rule => {
-          if (rule.if) {
-            // ดักจับ Branch สำหรับ Push (รันอัตโนมัติ)
-            const pushMatch = rule.if.match(/\$CI_COMMIT_BRANCH\s*==\s*["']([^"']+)["']/);
-            if (pushMatch && !rule.if.includes('merge_request_event')) {
-              pushBranches.push(pushMatch[1]);
-            }
-
-            // ดักจับ Branch สำหรับ Pull Request
-            const prMatch = rule.if.match(/\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME\s*==\s*["']([^"']+)["']/);
-            if (prMatch && rule.if.includes('merge_request_event')) {
-              prBranches.push(prMatch[1]);
-            }
+        doc.workflow.rules.forEach((r: any) => {
+          if (r.if) {
+            const pushMatch = r.if.match(/\$CI_COMMIT_BRANCH\s*==\s*["']([^"']+)["']/);
+            if (pushMatch && !r.if.includes('merge_request_event')) pushBranches.push(pushMatch[1]);
+            const prMatch = r.if.match(/\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME\s*==\s*["']([^"']+)["']/);
+            if (prMatch && r.if.includes('merge_request_event')) prBranches.push(prMatch[1]);
           }
         });
-
-        // อัปเดต State ฝั่งซ้ายให้ UI เปลี่ยนตาม
-        if (pushBranches.length > 0) {
-          newValues['enable_push'] = true;
-          newValues['push_branches'] = pushBranches;
-        } else {
-          newValues['enable_push'] = false;
-          newValues['push_branches'] = [];
-        }
-
-        if (prBranches.length > 0) {
-          newValues['enable_pr'] = true;
-          newValues['pr_branches'] = prBranches;
-        } else {
-          newValues['enable_pr'] = false;
-          newValues['pr_branches'] = [];
-        }
-      } else {
-        newValues['enable_push'] = false;
-        newValues['push_branches'] = [];
-        newValues['enable_pr'] = false;
-        newValues['pr_branches'] = [];
+        if (pushBranches.length > 0) { newValues['enable_push'] = true; newValues['push_branches'] = pushBranches; }
+        if (prBranches.length > 0) { newValues['enable_pr'] = true; newValues['pr_branches'] = prBranches; }
       }
     }
 
@@ -325,9 +418,6 @@ if (detected === 'github') {
   }
 };
 
-// =========================================================
-// 3. VALIDATE: YAML syntax errors for editor error list
-// =========================================================
 export interface YamlValidationError {
   line: number;
   column: number;
