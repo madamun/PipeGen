@@ -12,6 +12,7 @@ import React, {
   useRef,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import {
   Repo,
   PipelineFile,
@@ -30,6 +31,8 @@ const PipelineContext = createContext<PipelineContextType | undefined>(
 );
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
   const [repoProvider, setRepoProvider] = useState<"github" | "gitlab" | null>(null);
   const [syntaxProvider, setSyntaxProvider] = useState<"github" | "gitlab">("github");
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
@@ -77,13 +80,27 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOther, setIsLoadingOther] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+
+  const [forceReloadTrigger, setForceReloadTrigger] = useState(0);
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
-  const skipLoadOnce = useRef(false);
+  
+  const componentValuesRef = useRef<ComponentValues>({});
+  useEffect(() => { componentValuesRef.current = componentValues; }, [componentValues]);
+
+  const syntaxProviderRef = useRef(syntaxProvider);
+  useEffect(() => { syntaxProviderRef.current = syntaxProvider; }, [syntaxProvider]);
 
   const lastSavedContent = useRef<Record<string, string>>({});
   const activeFileContext = useRef<string>("");
+
+  const prevRepoRef = useRef<string | undefined>(undefined);
+  const prevBranchRef = useRef<string | undefined>(undefined);
+
+  const isRollingBackRef = useRef(false);
+  const rollbackCache = useRef<Record<string, string>>({});
 
   const getFullFilePath = useCallback((fileName: string) => {
     if (!fileName) return "";
@@ -113,7 +130,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             repoFullName: selectedRepo.full_name,
             filePath: path,
             content,
-            uiState: { ...componentValues, __syntax: syntaxProvider },
+            uiState: { ...componentValuesRef.current, __syntax: syntaxProviderRef.current },
             branch: selectedBranch,
           }),
         });
@@ -137,7 +154,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [selectedRepo, selectedBranch, componentValues, syntaxProvider, getFullFilePath],
+    [selectedRepo, selectedBranch, getFullFilePath],
   );
 
   const handleSetActiveTab = useCallback((tabId: string) => {
@@ -181,6 +198,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (tabIdToClose === activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
       saveDraftToDB(fileContent, activeTab);
     }
+
     setOpenTabs((prevTabs) => {
       const newTabs = prevTabs.filter((tab) => tab !== tabIdToClose);
       if (activeTab === tabIdToClose) {
@@ -283,64 +301,69 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const isLoading = isLoadingRepos || isLoadingBranches || isLoadingOther;
 
   useEffect(() => {
-    if (selectedRepo) {
-      if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
+    if (typeof window === "undefined" || availableRepos.length === 0) return;
+
+    const rYaml = sessionStorage.getItem("rollback_yaml");
+    const rRepo = sessionStorage.getItem("rollback_repo");
+    const rBranch = sessionStorage.getItem("rollback_branch");
+    const rPath = sessionStorage.getItem("rollback_path");
+
+    if (rYaml && rRepo && rPath) {
+      const executeRollback = async () => {
+        setIsRollingBack(true);
+        isRollingBackRef.current = true;
+
+        try {
+          const targetRepo = availableRepos.find((r) => r.full_name === rRepo);
+          if (!targetRepo) return;
+
+          await fetch("/api/pipeline/draft", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repoFullName: targetRepo.full_name,
+              filePath: rPath,
+              content: rYaml,
+              uiState: { __syntax: targetRepo.provider || "github" },
+              branch: rBranch || "main",
+            }),
+          });
+
+          rollbackCache.current[rPath] = rYaml;
+
+          const isDifferentRepo = selectedRepo?.full_name !== targetRepo.full_name;
+          setSelectedRepo(targetRepo);
+          if (rBranch) setSelectedBranch(rBranch);
+          if (targetRepo.provider) setSyntaxProvider(targetRepo.provider as "github" | "gitlab");
+
+          if (isDifferentRepo) {
+            setOpenTabs([rPath]);
+          } else {
+            setOpenTabs((prev) => prev.includes(rPath) ? prev : [...prev, rPath]);
+          }
+
+          setActiveTab(rPath);
+          setForceReloadTrigger(Date.now());
+
+        } catch (error) {
+          console.error("Rollback failed:", error);
+        } finally {
+          sessionStorage.removeItem("rollback_yaml");
+          sessionStorage.removeItem("rollback_repo");
+          sessionStorage.removeItem("rollback_branch");
+          sessionStorage.removeItem("rollback_path");
+
+          setTimeout(() => {
+            setIsRollingBack(false);
+            isRollingBackRef.current = false;
+          }, 800);
+        }
+      };
+
+      executeRollback();
     }
-  }, [selectedRepo]);
-
-  const setProvider = (newSyntax: "github" | "gitlab") => {
-    if (newSyntax === syntaxProvider) return; 
-    setSyntaxProvider(newSyntax);
-    isUpdatingFromUI.current = true;
-    const nextValues = { ...componentValues };
-    categories.forEach((cat) => {
-      cat.components.forEach((comp) => {
-        comp.uiConfig?.fields?.forEach((field) => {
-          if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax];
-        });
-      });
-    });
-    setComponentValues(nextValues);
-
-    setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, ""));
-  };
-
-  const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
-    const defaultBranch = selectedRepo?.default_branch || "main";
-    let finalValue = value;
-    let nextValues = { ...componentValues };
-
-    const pushBranches = componentValues["push_branches"];
-    const prBranches = componentValues["pr_branches"];
-    if (id === "enable_push" && value === true && !(Array.isArray(pushBranches) && pushBranches.length > 0))
-      nextValues["push_branches"] = [defaultBranch];
-    if (id === "enable_pr" && value === true && !(Array.isArray(prBranches) && prBranches.length > 0))
-      nextValues["pr_branches"] = [defaultBranch];
-    if (id === "push_branches" && componentValues["enable_push"] && Array.isArray(value) && value.length === 0)
-      finalValue = [defaultBranch];
-    if (id === "pr_branches" && componentValues["enable_pr"] && Array.isArray(value) && value.length === 0)
-      finalValue = [defaultBranch];
-
-    nextValues[id] = finalValue;
-    setComponentValues(nextValues);
-    isUpdatingFromUI.current = true;
-    setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, fileContent));
-  };
-
-  useEffect(() => {
-    if (isUpdatingFromUI.current) {
-      isUpdatingFromUI.current = false;
-      return;
-    }
-    if (!fileContent.trim()) {
-      setComponentValues({});
-      return;
-    }
-
-    const { detectedSyntax, newValues } = parseYamlToUI(fileContent, categories, syntaxProvider);
-    if (detectedSyntax !== syntaxProvider) setSyntaxProvider(detectedSyntax as "github" | "gitlab");
-    setComponentValues((prev) => ({ ...prev, ...newValues }));
-  }, [fileContent, categories]);
+  }, [availableRepos, pathname]);
 
   const refreshFileList = useCallback(async () => {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
@@ -373,19 +396,124 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshFileList();
-    setOpenTabs([]);
-    setActiveTab("");
-    setComponentValues({});
   }, [selectedRepo, selectedBranch, refreshFileList]);
+
+  useEffect(() => {
+    const currentRepo = selectedRepo?.full_name;
+    const currentBranch = selectedBranch;
+
+    if (currentRepo !== prevRepoRef.current || currentBranch !== prevBranchRef.current) {
+      const isFirstLoad = prevRepoRef.current === undefined;
+      prevRepoRef.current = currentRepo;
+      prevBranchRef.current = currentBranch;
+
+      if (isRollingBackRef.current) {
+        return;
+      }
+
+      if (!isFirstLoad) {
+        setOpenTabs([]);
+        setActiveTab("");
+        setComponentValues({});
+      }
+    }
+  }, [selectedRepo?.full_name, selectedBranch]);
+
+  useEffect(() => {
+    if (selectedRepo) {
+      if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
+    }
+  }, [selectedRepo]);
+
+  const setProvider = (newSyntax: "github" | "gitlab") => {
+    if (newSyntax === syntaxProvider) return;
+    setSyntaxProvider(newSyntax);
+    isUpdatingFromUI.current = true;
+    const nextValues = { ...componentValues };
+    categories.forEach((cat) => {
+      cat.components.forEach((comp) => {
+        comp.uiConfig?.fields?.forEach((field) => {
+          if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax];
+        });
+      });
+    });
+    setComponentValues(nextValues);
+
+    setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, ""));
+  };
+
+  const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
+    const defaultBranch = selectedRepo?.default_branch || "main";
+    let finalValue = value;
+    let nextValues = { ...componentValues };
+
+    const pushBranches = componentValues["push_branches"];
+    const prBranches = componentValues["pr_branches"];
+    if (id === "enable_push" && value === true && !(Array.isArray(pushBranches) && pushBranches.length > 0))
+      nextValues["push_branches"] = [defaultBranch];
+    if (id === "enable_pr" && value === true && !(Array.isArray(prBranches) && prBranches.length > 0))
+      nextValues["pr_branches"] = [defaultBranch];
+    if (id === "push_branches" && componentValues["enable_push"] && Array.isArray(value) && value.length === 0)
+      finalValue = [defaultBranch];
+    if (id === "pr_branches" && componentValues["enable_pr"] && Array.isArray(value) && value.length === 0)
+      finalValue = [defaultBranch];
+
+    nextValues[id] = finalValue;
+    if (finalValue !== undefined && finalValue !== null) {
+      const lookupKey = String(finalValue);
+      categories.forEach(cat =>
+        cat.components.forEach((comp: any) => {
+          const field = (comp.uiConfig?.fields || []).find((f: any) => f.id === id);
+          if (field?.linkedFields) {
+            Object.entries(field.linkedFields).forEach(([targetId, mapping]: [string, any]) => {
+              const newVal = mapping[lookupKey];
+              if (newVal) nextValues[targetId] = newVal;
+            });
+          }
+        })
+      );
+    }
+    setComponentValues(nextValues);
+    isUpdatingFromUI.current = true;
+    const shouldMerge = fileContent.trim() && !fileContent.startsWith('# Error');
+    setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, shouldMerge ? fileContent : ""));
+  };
+
+  useEffect(() => {
+    if (isUpdatingFromUI.current) {
+      isUpdatingFromUI.current = false;
+      return;
+    }
+
+    if (!fileContent.trim()) {
+      if (categories.length > 0) setComponentValues({});
+      return;
+    }
+
+    if (categories.length === 0) return;
+
+    const parseTimer = setTimeout(() => {
+      try {
+        const { detectedSyntax, newValues } = parseYamlToUI(fileContent, categories, syntaxProvider);
+
+        if (detectedSyntax !== syntaxProvider) {
+          setSyntaxProvider(detectedSyntax as "github" | "gitlab");
+        }
+
+        // ทับด้วยค่าใหม่ 100% (ลบของเก่าทิ้ง โค้ดฝั่งขวาจะได้เป็น Source of Truth จริงๆ)
+        setComponentValues(newValues);
+      } catch (e) {
+        // แอบทำงานเงียบๆ เผื่อผู้ใช้กำลังพิมพ์โค้ดยังไม่เสร็จ
+      }
+    }, 500);
+
+    return () => clearTimeout(parseTimer);
+  }, [fileContent, categories, syntaxProvider]);
 
   useEffect(() => {
     let ignore = false;
 
-    if (skipLoadOnce.current) {
-      skipLoadOnce.current = false;
-      return;
-    }
-    if (!selectedRepo || !activeTab || !repoProvider) {
+    if (!selectedRepo?.full_name || !activeTab || !repoProvider) {
       if (!activeTab) {
         setFileContent("");
         setOriginalContent("");
@@ -393,14 +521,28 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
+
     if (isRenamingRef.current) {
       isRenamingRef.current = false;
       return;
     }
 
-    activeFileContext.current = "";
-    setFileContent("");
-    setComponentValues({});
+    if (rollbackCache.current[activeTab]) {
+      const rYaml = rollbackCache.current[activeTab];
+      delete rollbackCache.current[activeTab];
+
+      activeFileContext.current = activeTab;
+      setFileContent(rYaml);
+      setComponentValues({});
+      lastSavedContent.current[activeTab] = rYaml;
+      return;
+    }
+
+    if (activeFileContext.current !== activeTab) {
+      activeFileContext.current = "";
+      setFileContent("");
+      setComponentValues({});
+    }
 
     const loadContent = async () => {
       let finalContent = "";
@@ -460,7 +602,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
     loadContent();
     return () => { ignore = true; };
-  }, [selectedRepo, selectedBranch, activeTab, getFullFilePath]);
+  }, [selectedRepo?.full_name, selectedBranch, activeTab, forceReloadTrigger]);
 
   useEffect(() => {
     if (!selectedRepo || !activeTab) return;
@@ -495,7 +637,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           repoFullName: selectedRepo.full_name,
           filePath: newFilePath,
           content: safeContent,
-          uiState: { ...componentValues, __syntax: syntaxProvider },
+          uiState: { ...componentValuesRef.current, __syntax: syntaxProviderRef.current },
           branch: selectedBranch,
         }),
       });
@@ -551,12 +693,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  // 🔥 จุดแก้บั๊กผีคืนชีพ: ตัดไฟแต่ต้นลมก่อนสั่ง closeTab
   const discardDraft = async () => {
     if (!selectedRepo || !activeTab || !confirm(`Discard draft for this file?`)) return false;
     try {
       setIsSaving(true);
-      const tabToClose = activeTab; // ล็อกเป้าหมายไว้ก่อน
+      const tabToClose = activeTab;
       const res = await fetch("/api/pipeline/draft", {
         method: "DELETE",
         credentials: "include",
@@ -568,13 +709,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         }),
       });
       if (res.ok) {
-        // 🟢 เวทมนตร์ล้างผี: ล้างเป้าหมายหน้าจอทิ้งให้หมด ก่อนที่ closeTab จะเช็กเจอว่ามีการเปลี่ยนแปลง
         activeFileContext.current = "";
         setFileContent("");
         delete lastSavedContent.current[tabToClose];
 
-        await refreshFileList();
         closeTab(tabToClose);
+        refreshFileList();
         return true;
       }
     } catch (e) {
@@ -602,10 +742,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       }
       if (data.config) {
         const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
-        if (activeTab !== targetFileName) {
-          skipLoadOnce.current = true;
-          setSelectedFile(targetFileName);
-        }
 
         let newValues = { ...componentValues, ...data.config };
         categories.forEach((cat) =>
@@ -621,10 +757,20 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         isUpdatingFromUI.current = true;
 
         const generated = generateYamlFromValues(categories, newValues, syntaxProvider, "");
-        setFileContent(generated);
 
-        lastSavedContent.current[targetFileName] = generated;
+        // 1. สั่งเปิด Tab และย้ายไปที่ไฟล์เป้าหมายทันที
+        if (activeTab !== targetFileName) {
+          setOpenTabs((prev) => prev.includes(targetFileName) ? prev : [...prev, targetFileName]);
+          setActiveTab(targetFileName);
+        }
+
+        // 2. แสดงโค้ดลงหน้าจอฝั่งขวา
+        setFileContent(generated);
         activeFileContext.current = targetFileName;
+
+        // 🔥 3. THE FIX: บังคับยิง API เพื่อเซฟลง Database ทันที! (ไม่รอ Auto-save)
+        lastSavedContent.current[targetFileName] = ""; // เคลียร์ตัวหลอกทิ้งก่อน
+        await saveDraftToDB(generated, targetFileName); // ยัดลง DB ตรงๆ เลย
 
         const detected: string[] = [];
         if (data.config.use_node) detected.push("Node.js");
@@ -672,6 +818,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         isSaving,
         isLoading,
         isAnalyzing,
+        isRollingBack,
         renameCurrentFile,
         commitFile,
         discardDraft,

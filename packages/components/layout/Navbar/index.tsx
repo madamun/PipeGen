@@ -24,7 +24,7 @@ function Logo() {
         Pipe Gen
       </span>
     </Link>
-  );
+  );    
 }
 
 // --- ส่วนย่อย: SearchBar (ยุบรวมมาไว้ที่นี่ และ Export เผื่อคนอื่นใช้) ---

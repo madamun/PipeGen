@@ -95,31 +95,39 @@ export async function GET(req: NextRequest) {
   }));
 
   // ระวัง rate limit — enrich แค่ชุดแรกก่อน (ปรับได้)
-  const MAX_META = 24;
+  const MAX_META = 12;
   const head = baseRepos.slice(0, MAX_META);
   const tail = baseRepos.slice(MAX_META);
 
   const withMeta = await Promise.all(
     head.map(async (r) => {
       const full = encodeURIComponent(r.full_name);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
       const [branchesRes, tagsRes, workflowsRes, langsRes] = await Promise.all([
         fetch(
           `https://api.github.com/repos/${r.full_name}/branches?per_page=1`,
-          { headers: ghHeaders, cache: "no-store" },
+          { headers: ghHeaders, cache: "no-store", signal: controller.signal },
         ),
         fetch(`https://api.github.com/repos/${r.full_name}/tags?per_page=1`, {
           headers: ghHeaders,
           cache: "no-store",
+          signal: controller.signal,
         }),
         fetch(`https://api.github.com/repos/${r.full_name}/actions/workflows`, {
           headers: ghHeaders,
           cache: "no-store",
+          signal: controller.signal,
         }),
         fetch(`https://api.github.com/repos/${r.full_name}/languages`, {
           headers: ghHeaders,
           cache: "no-store",
+          signal: controller.signal,
         }),
       ]);
+
+      clearTimeout(timeout);
 
       const branchCount = await countFromLinkOrBody(branchesRes);
       const tagCount = await countFromLinkOrBody(tagsRes);

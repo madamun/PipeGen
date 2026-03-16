@@ -1,4 +1,4 @@
-// src/components/layout/RightPanel/RightPanel.tsx
+// packages/components/layout/RightPanel/RightPanel.tsx
 
 "use client";
 
@@ -190,7 +190,6 @@ function EditorHeader({
       {/* โซนของเครื่องมือ Toolbar ด้านขวา */}
       <div className="flex items-center gap-1.5 px-3 pb-1.5 shrink-0 h-full relative z-20">
 
-        {/* 🦊 เมนูจุด 3 จุด (ซ่อน Rename กับ Discard Draft ไว้ที่นี่) */}
         {activeTab && (
           <DropdownMenu>
             <DropdownMenuTrigger title="File Actions" className="h-7 w-7 mr-1 mt-1.5 grid place-items-center rounded-md hover:bg-white/10 text-slate-400 hover:text-white transition-all outline-none border-r border-transparent">
@@ -301,7 +300,19 @@ export default function RightPanel() {
   const [isDiffMode, setIsDiffMode] = React.useState(false);
   const [commitOpen, setCommitOpen] = React.useState(false);
   const [hasYamlErrors, setHasYamlErrors] = React.useState(false);
-  const { selectedRepo, activeTab, fileContent } = usePipeline();
+  const [isRollingBack, setIsRollingBack] = React.useState(false);
+
+  const {
+    selectedRepo,
+    activeTab,
+    fileContent,
+    setSelectedRepo,
+    setSelectedBranch,
+    setSelectedFile,
+    setFileContent,
+    availableRepos
+  } = usePipeline();
+
 
   const showCommitButton = !!selectedRepo?.full_name && !!activeTab;
   const commitDisabled = !fileContent?.trim() || hasYamlErrors;
@@ -339,6 +350,15 @@ export default function RightPanel() {
         setIsDiffMode={setIsDiffMode}
       />
       <div className="flex-1 bg-[#010819] overflow-auto relative">
+
+        {isRollingBack && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#010819]/80 backdrop-blur-sm">
+            <div className="text-5xl mb-4 animate-bounce">⏳</div>
+            <h3 className="text-lg font-bold text-white mb-2 tracking-wide">Time Traveling...</h3>
+            <p className="text-sm text-blue-300 animate-pulse">Restoring your code from the past</p>
+          </div>
+        )}
+
         <EditorBody
           fontSize={fontSize}
           isDiffMode={isDiffMode}

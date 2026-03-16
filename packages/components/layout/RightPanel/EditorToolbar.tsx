@@ -1,4 +1,4 @@
-// src/components/layout/RightPanel/EditorToolbar.tsx
+// pakages/components/layout/RightPanel/EditorToolbar.tsx
 
 "use client";
 
