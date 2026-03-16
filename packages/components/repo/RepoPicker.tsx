@@ -474,7 +474,7 @@ function GitlabManagerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-none !w-[700px] !h-[600px] flex flex-col bg-slate-900 text-white border-slate-700 p-6 ">
+      <DialogContent className="!max-w-none !w-[700px] !h-[600px] flex flex-col  bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)] text-white ">
 
         <div className="shrink-0">
           <DialogTitle className="text-xl font-semibold">Select GitLab Projects</DialogTitle>
@@ -486,7 +486,7 @@ function GitlabManagerModal({
         <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-2 border border-slate-700 rounded-lg p-3 bg-slate-950/50 shadow-inner no-scrollbar">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 animate-spin text-slate-500" />
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-600" />
             </div>
           ) : data?.repos?.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-400">
@@ -510,8 +510,8 @@ function GitlabManagerModal({
           )}
         </div>
 
-        <div className="shrink-0 flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800">
-          <Button variant="ghost" className="hover:bg-slate-800 text-slate-300" onClick={() => onOpenChange(false)}>
+        <div className="shrink-0 flex justify-end gap-3 mt-6 pt-4 border-t border-slate-500">
+          <Button className="bg-red-500 hover:bg-red-400 text-wiite" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button

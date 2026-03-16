@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { authClient } from "../../lib/auth-client";
-import { User, LogOut, Github, Gitlab, Mail, Copy, Check } from "lucide-react";
+import { User, LogOut, Github, Gitlab, Mail, Copy, Check, History, Home } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +24,11 @@ import Image from "next/image";
 export default function UserMenu() {
   const { data } = authClient.useSession();
   const user = data?.user;
+  const router = useRouter();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [hasCopiedId, setHasCopiedId] = useState(false);
-  
+
   // 1. เพิ่ม State สำหรับเก็บค่ายที่ใช้ล็อกอิน (default เป็น loading ก่อน)
   const [provider, setProvider] = useState<"github" | "gitlab" | "loading">("loading");
 
@@ -124,6 +126,16 @@ export default function UserMenu() {
 
           <DropdownMenuItem
             className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
+            onSelect={() => {
+              router.push("/");
+            }}
+          >
+            <Home className="h-4 w-4 text-slate-400" />
+            Home
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
             onSelect={(e) => {
               e.preventDefault();
               setIsProfileOpen(true);
@@ -131,6 +143,16 @@ export default function UserMenu() {
           >
             <User className="h-4 w-4 text-slate-400" />
             View Profile
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
+            onSelect={() => {
+              router.push("/history");
+            }}
+          >
+            <History className="h-4 w-4 text-slate-400" />
+            Activity History
           </DropdownMenuItem>
 
           <DropdownMenuItem

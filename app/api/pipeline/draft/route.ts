@@ -115,40 +115,52 @@ export async function GET(req: Request) {
       }
     }
 
-    // 2. 🌍 ถ้า DB ไม่มี -> ไปดึงจาก GitHub
+// 2. 🌍 ถ้า DB ไม่มี -> ไปดึงจาก Git (รองรับทั้ง GitHub + GitLab)
+    const provider = repo?.provider || "github";
+
     const account = await prisma.account.findFirst({
-      where: { userId: session.user.id, providerId: "github" },
+      where: { userId: session.user.id, providerId: provider },
     });
 
     if (!account?.accessToken) {
-      return NextResponse.json({ content: "# Error: GitHub Token not found" });
+      return NextResponse.json({ content: `# Error: ${provider} Token not found` });
     }
 
-    // ยิง GitHub API
-    const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}?ref=${branch}`;
-    const ghRes = await fetch(apiUrl, {
-      headers: { Authorization: `Bearer ${account.accessToken}` },
-    });
-
-    if (!ghRes.ok) {
-      // ถ้าหาไม่เจอ (อาจจะเป็นไฟล์ใหม่จริงๆ) ให้ส่งว่าง
-      return NextResponse.json({ content: "", source: "new" });
-    }
-
-    const data = await ghRes.json();
-
-    // 🔓 ถอดรหัส Base64
-    if (data.content && data.encoding === "base64") {
-      const decodedContent = Buffer.from(data.content, "base64").toString(
-        "utf-8",
+    if (provider === "gitlab") {
+      // 🦊 GitLab: ใช้ raw file API
+      const encodedId = encodeURIComponent(repoFullName);
+      const encodedPath = encodeURIComponent(filePath);
+      const glRes = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}/raw?ref=${branch}`,
+        { headers: { Authorization: `Bearer ${account.accessToken}` } },
       );
-      return NextResponse.json({
-        content: decodedContent,
-        source: "github",
-      });
-    }
 
-    return NextResponse.json({ content: "", source: "unknown" });
+      if (!glRes.ok) {
+        return NextResponse.json({ content: "", source: "new" });
+      }
+
+      const content = await glRes.text();
+      return NextResponse.json({ content, source: "gitlab" });
+
+    } else {
+      // GitHub: ใช้ contents API (เหมือนเดิม)
+      const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}?ref=${branch}`;
+      const ghRes = await fetch(apiUrl, {
+        headers: { Authorization: `Bearer ${account.accessToken}` },
+      });
+
+      if (!ghRes.ok) {
+        return NextResponse.json({ content: "", source: "new" });
+      }
+
+      const data = await ghRes.json();
+      if (data.content && data.encoding === "base64") {
+        const decodedContent = Buffer.from(data.content, "base64").toString("utf-8");
+        return NextResponse.json({ content: decodedContent, source: "github" });
+      }
+
+      return NextResponse.json({ content: "", source: "unknown" });
+    }
   } catch (error) {
     console.error("Load Error:", error);
     return NextResponse.json({ error: "Failed to load" }, { status: 500 });

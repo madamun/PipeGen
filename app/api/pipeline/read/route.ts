@@ -1,107 +1,69 @@
-// src/app/api/pipeline/read/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
-import { auth } from "../../../../packages/server/auth"; // 👈 เช็ค path auth ให้ถูกนะครับ
+import { auth } from "../../../../packages/server/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    // 1. ตรวจสอบ Session (Better Auth ใช้ headers)
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const repoFullName = searchParams.get("repoFullName");
-    const filePath = searchParams.get("filePath");
     const branch = searchParams.get("branch") || "main";
+    const filePath = searchParams.get("filePath");
 
-    console.log(`📖 Reading File: ${repoFullName} (${branch}) - ${filePath}`);
+    if (!repoFullName || !filePath) {
+      return NextResponse.json({ error: "Missing params" }, { status: 400 });
+    }
 
-    if (!repoFullName || !filePath)
-      return NextResponse.json({ content: "# Error: Missing parameters" });
-
-    // 2. หา Repo ใน DB
+    // ดึง repo เพื่อรู้ provider
     const repo = await prisma.repository.findFirst({
       where: { fullName: repoFullName, userId: session.user.id },
     });
 
-    if (!repo) {
-      console.log("❌ Repo not found in DB");
-      return NextResponse.json({
-        content: "# Error: Repository not found in DB",
-      });
-    }
+    const provider = repo?.provider || "github";
 
-    const provider = repo.provider;
-    console.log(`🔹 Repo Provider in DB is: "${provider}"`);
-
-    // 3. หา Token
     const account = await prisma.account.findFirst({
       where: { userId: session.user.id, providerId: provider },
+      select: { accessToken: true },
     });
 
     if (!account?.accessToken) {
-      console.log(`❌ No Token for ${provider}`);
-      return NextResponse.json({
-        content: `# Error: ${provider} Access Token not found (Check your login).`,
-      });
+      return NextResponse.json({ content: "" });
     }
 
-    // 4. ดึงเนื้อหา
-    let content = "";
-    try {
-      if (provider === "github") {
-        const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}?ref=${branch}`;
-        const res = await fetch(apiUrl, {
-          headers: { Authorization: `Bearer ${account.accessToken}` },
-        });
-
-        // 🔥 FIX: เพิ่มตรงนี้ครับ! ถ้าไม่เจอไฟล์ ให้ตอบว่างๆ กลับไป (อย่า Throw Error)
-        if (res.status === 404) {
-          console.log("ℹ️ GitHub: File not found (New file)");
-          return NextResponse.json({ content: "" });
-        }
-
-        if (!res.ok) throw new Error(`GitHub Status: ${res.status}`);
-
-        const data = await res.json();
-        // GitHub ส่งมาเป็น Base64 ต้องแปลงกลับ
-        if (data.content) {
-          content = Buffer.from(data.content, "base64").toString("utf-8");
-        } else {
-          content = ""; // กรณีไฟล์ว่างเปล่าจริงๆ
-        }
-      } else if (provider === "gitlab") {
-        const encodedId = encodeURIComponent(repoFullName);
-        const encodedPath = encodeURIComponent(filePath);
-        const apiUrl = `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}/raw?ref=${branch}`;
-        const res = await fetch(apiUrl, {
-          headers: { Authorization: `Bearer ${account.accessToken}` },
-        });
-
-        // ✅ ของ GitLab คุณทำถูกแล้ว
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.log("ℹ️ GitLab: File not found (New file)");
-            return NextResponse.json({ content: "" });
-          }
-          throw new Error(`GitLab Status: ${res.status}`);
-        }
-        content = await res.text();
-      }
-    } catch (e: any) {
-      console.error("Fetch Error:", e);
-      // ถ้า Error จริงๆ (ไม่ใช่ 404) ให้ส่ง Error กลับไปโชว์
-      return NextResponse.json({
-        content: `# Error fetching file: ${e.message}`,
-      });
+    if (provider === "gitlab") {
+      const encodedId = encodeURIComponent(repoFullName);
+      const encodedPath = encodeURIComponent(filePath);
+      const res = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodedId}/repository/files/${encodedPath}/raw?ref=${branch}`,
+        { headers: { Authorization: `Bearer ${account.accessToken}` } },
+      );
+      if (!res.ok) return NextResponse.json({ content: "" });
+      const content = await res.text();
+      return NextResponse.json({ content, source: "gitlab" });
     }
 
-    return NextResponse.json({ content });
+    // GitHub
+    const apiUrl = `https://api.github.com/repos/${repoFullName}/contents/${filePath}?ref=${branch}`;
+    const ghRes = await fetch(apiUrl, {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    });
+
+    if (!ghRes.ok) return NextResponse.json({ content: "" });
+
+    const data = await ghRes.json();
+    if (data.content && data.encoding === "base64") {
+      const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+      return NextResponse.json({ content: decoded, source: "github" });
+    }
+
+    return NextResponse.json({ content: "" });
   } catch (error) {
-    console.error("Internal Error:", error);
-    return NextResponse.json({ content: "# Error: Internal Server Error" });
+    console.error("Read error:", error);
+    return NextResponse.json({ error: "Failed to read" }, { status: 500 });
   }
 }

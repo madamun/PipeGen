@@ -67,9 +67,9 @@ async function fetchRepoFile(
   const headers: Record<string, string> =
     provider === "github"
       ? {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github.v3.raw",
-        }
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3.raw",
+      }
       : { Authorization: `Bearer ${accessToken}` };
 
   if (provider === "github") {
@@ -169,6 +169,33 @@ export async function analyzeRepo(
   const requirementsTxt = await fetchFile("requirements.txt");
   if (requirementsTxt) {
     config.use_python = true;
+  }
+
+  // 4. Go
+  const goMod = await fetchFile("go.mod");
+  if (goMod) {
+    config.use_go = true;
+    const goVerMatch = goMod.match(/^go\s+(\d+\.\d+)/m);
+    if (goVerMatch) config.go_version = goVerMatch[1];
+  }
+
+  // 5. Rust
+  const cargoToml = await fetchFile("Cargo.toml");
+  if (cargoToml) {
+    config.use_rust = true;
+  }
+
+  // 6. Lint
+  if (packageJsonRaw) {
+    const hasEslint =
+      (await fetchFile(".eslintrc.js")) ||
+      (await fetchFile(".eslintrc.json")) ||
+      (await fetchFile("eslint.config.js")) ||
+      (await fetchFile("eslint.config.mjs"));
+    if (hasEslint) {
+      config.check_quality = true;
+      config.lint_cmd = `${config.pkg_manager || "npm"} run lint`;
+    }
   }
 
   return config;

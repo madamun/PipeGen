@@ -255,18 +255,19 @@ export default function CommitDialog(props: Props) {
             {/* Branch: input (type) + button (open dropdown to select) */}
             <div className="space-y-2">
               <Label className="text-slate-200">Branch</Label>
+              <p className="text-xs text-slate-400">Select existing branch or type a new name to create one.</p>
               <div className="flex rounded-md border border-white/20 bg-[#0f1e50] overflow-hidden">
                 <Input
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
-                  placeholder={loadingBranches ? "Loading..." : "Type branch name or select below"}
+                  placeholder={loadingBranches ? "Loading..." : "Select or type new branch name..."}
                   disabled={loadingBranches}
-                  className="rounded-none border-0 border-r border-white/20 bg-transparent text-white font-mono focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="bg-black/30 border-white/10"
                   aria-invalid={branch.trim() !== "" && !branchValid}
                 />
                 <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
                   <PopoverTrigger asChild>
-                    <button
+                    <button 
                       type="button"
                       disabled={loadingBranches || branchNames.length === 0}
                       className="flex items-center justify-center px-2 border-l border-white/20 text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"

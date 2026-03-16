@@ -1,4 +1,4 @@
-// src/components/layout/RightPanel/EditorBody.tsx
+// packages/components/layout/RightPanel/EditorBody.tsx
 
 "use client";
 
@@ -169,6 +169,20 @@ export default function EditorBody({ fontSize, isDiffMode, onValidationChange }:
             background: rgba(255, 255, 255, 0.1) !important;
             border-radius: 4px;
           }
+          /* บรรทัดที่ลบ — พื้นแดงเข้ม ตัวอักษรแดงอ่อน */
+          .monaco-diff-editor .line-delete .mtk1 {
+            color: #f87171 !important;
+          }
+          .monaco-diff-editor .char-delete {
+            background-color: rgba(239, 68, 68, 0.3) !important;
+          }
+          /* บรรทัดที่เพิ่ม — พื้นเขียวเข้ม ตัวอักษรเขียวอ่อน */
+          .monaco-diff-editor .line-insert .mtk1 {
+            color: #4ade80 !important;
+          }
+          .monaco-diff-editor .char-insert {
+            background-color: rgba(34, 197, 94, 0.3) !important;
+          }
         `}</style>
       )}
 
@@ -189,44 +203,44 @@ export default function EditorBody({ fontSize, isDiffMode, onValidationChange }:
         <div className="flex-1 min-h-0 relative overflow-hidden">
           {isMounting && <LoadingOverlay />}
           {isDiffMode ? (
-          <DiffEditor
-            height="100%"
-            theme="vs-dark"
-            original={safeOriginal}
-            modified={doc}
-            onMount={handleDiffMount}
-            options={{
-              fontSize: fontSize,
-              readOnly: true,
-              renderSideBySide: true,
-              enableSplitViewResizing: false,
-              useInlineViewWhenSpaceIsLimited: false,
-              minimap: { enabled: false },
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              fontFamily: "'JetBrains Mono', monospace",
-              diffWordWrap: "off",
-            }}
-          />
-        ) : (
-          <Editor
-            height="100%"
-            defaultLanguage="yaml"
-            path={selectedFile}
-            theme="vs-dark"
-            value={doc}
-            onChange={handleEditorChange}
-            onMount={handleEditorDidMount}
-            options={{
-              fontSize: fontSize,
-              minimap: { enabled: true },
-              fontFamily: "'JetBrains Mono', monospace",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 16, bottom: 16 },
-            }}
-          />
-        )}
+            <DiffEditor
+              height="100%"
+              theme="vs-dark"
+              original={safeOriginal}
+              modified={doc}
+              onMount={handleDiffMount}
+              options={{
+                fontSize: fontSize,
+                readOnly: true,
+                renderSideBySide: true,
+                enableSplitViewResizing: false,
+                useInlineViewWhenSpaceIsLimited: false,
+                minimap: { enabled: false },
+                automaticLayout: true,
+                scrollBeyondLastLine: false,
+                fontFamily: "'JetBrains Mono', monospace",
+                diffWordWrap: "off",
+              }}
+            />
+          ) : (
+            <Editor
+              height="100%"
+              defaultLanguage="yaml"
+              path={selectedFile}
+              theme="vs-dark"
+              value={doc}
+              onChange={handleEditorChange}
+              onMount={handleEditorDidMount}
+              options={{
+                fontSize: fontSize,
+                minimap: { enabled: true },
+                fontFamily: "'JetBrains Mono', monospace",
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                padding: { top: 16, bottom: 16 },
+              }}
+            />
+          )}
         </div>
         {!isDiffMode && editorErrors.length > 0 && (
           <div className="shrink-0 border-t border-white/10 bg-[#0f1e30] max-h-36 overflow-y-auto">

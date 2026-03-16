@@ -87,6 +87,12 @@ export interface PipelineContextType {
   selectedFile: string;
   setSelectedFile: (file: string) => void;
 
+  openTabs: string[];
+  setOpenTabs: React.Dispatch<React.SetStateAction<string[]>>;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  closeTab: (tab: string) => void;
+
   originalContent: string;
 
   fileList: PipelineFile[];
@@ -95,6 +101,7 @@ export interface PipelineContextType {
   isSaving: boolean;
   isLoading: boolean;
   isAnalyzing: boolean;
+  isRollingBack: boolean;
   renameCurrentFile: (newName: string) => void;
   commitFile: (message: string) => Promise<boolean>;
   discardDraft: () => Promise<boolean>;
