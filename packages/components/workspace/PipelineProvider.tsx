@@ -84,6 +84,27 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const [forceReloadTrigger, setForceReloadTrigger] = useState(0);
 
+  // Left Panel open/close (for Suggestions "Go to Left Panel")
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState<
+    Record<string, boolean>
+  >({});
+  const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const navigateToBlock = useCallback(
+    (categoryId: string, componentName: string) => {
+      setIsCollapsed(false);
+      setCategoriesOpen((prev) => ({ ...prev, [categoryId]: true }));
+      setSectionsOpen((prev) => ({
+        ...prev,
+        [componentName.toLowerCase()]: true,
+      }));
+    },
+    [],
+  );
+
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
   
@@ -369,7 +390,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
     setIsLoadingOther(true);
     try {
-      await fetch("/api/pipeline/sync", {
+      const syncRes = await fetch("/api/pipeline/sync", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -379,6 +400,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           provider: repoProvider,
         }),
       });
+      if (!syncRes.ok) {
+        setDraftList([]);
+        setGitFileList([]);
+        setFileList([]);
+        return;
+      }
       const res = await fetch(
         `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}&t=${Date.now()}`,
         { credentials: "include", cache: "no-store" },
@@ -826,6 +853,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         componentValues,
         updateComponentValue,
         autoSetup,
+        isCollapsed,
+        setIsCollapsed,
+        categoriesOpen,
+        setCategoriesOpen,
+        sectionsOpen,
+        setSectionsOpen,
+        navigateToBlock,
       }}
     >
       {children}

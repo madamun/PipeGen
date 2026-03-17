@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { RefreshCw, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 export default function BranchPicker() {
   // 1. Logic ใหม่: ดึงของจาก Provider
@@ -25,8 +25,6 @@ export default function BranchPicker() {
     isLoading,
   } = usePipeline();
 
-  const [isSyncing, setIsSyncing] = React.useState(false);
-
   // 2. Logic ใหม่: เมื่อ Repo เปลี่ยน ให้สั่ง Provider ไปดึง Branch
   React.useEffect(() => {
     if (selectedRepo?.full_name) {
@@ -34,34 +32,7 @@ export default function BranchPicker() {
     }
   }, [selectedRepo?.full_name, fetchBranches]);
 
-  // 3. Logic Sync: (เหมือนเดิม)
-  React.useEffect(() => {
-    if (!selectedRepo || !selectedBranch) return;
-
-    const syncPipelines = async () => {
-      try {
-        setIsSyncing(true);
-
-        await fetch("/api/pipeline/sync", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repoFullName: selectedRepo.full_name,
-            branch: selectedBranch,
-            provider: provider,
-          }),
-        });
-      } catch (e) {
-        console.error("Sync failed", e);
-      } finally {
-        setIsSyncing(false);
-      }
-    };
-
-    const timer = setTimeout(() => syncPipelines(), 500);
-    return () => clearTimeout(timer);
-  }, [selectedRepo, selectedBranch, provider]);
+  // Sync เรียกจาก PipelineProvider.refreshFileList เท่านั้น (เลี่ยงการเรียกซ้ำ → 400)
 
   // ถ้ายังไม่เลือก Repo
   if (!selectedRepo)
@@ -107,10 +78,6 @@ export default function BranchPicker() {
           )}
         </SelectContent>
       </Select>
-
-      {isSyncing && (
-        <RefreshCw className="h-3 w-3 text-slate-400 animate-spin" />
-      )}
     </div>
   );
 }

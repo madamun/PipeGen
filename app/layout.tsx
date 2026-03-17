@@ -31,11 +31,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
       >
         <Providers>
-          <Navbar />
-          <PipelineProvider>{children}</PipelineProvider>
+          <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="shrink-0">
+              <Navbar />
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <PipelineProvider>{children}</PipelineProvider>
+            </div>
+          </div>
         </Providers>
       </body>
     </html>

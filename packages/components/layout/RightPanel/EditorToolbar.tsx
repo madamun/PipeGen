@@ -13,6 +13,7 @@ import {
   Share,
   Download,
   Printer,
+  MessageCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ interface EditorToolbarProps {
   setZoom: (z: number) => void;
   isDiffMode: boolean;
   setIsDiffMode: (v: boolean) => void;
+  onOpenAIPanel?: () => void;
 }
 
 export default function EditorToolbar({
@@ -46,6 +48,7 @@ export default function EditorToolbar({
   setZoom,
   isDiffMode,
   setIsDiffMode,
+  onOpenAIPanel,
 }: EditorToolbarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -140,6 +143,27 @@ export default function EditorToolbar({
             </TooltipContent>
           </Tooltip>
         </div>
+
+        {/* AI Chat */}
+        {onOpenAIPanel && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onOpenAIPanel}
+                aria-label="Open AI Assistant"
+                className="h-8 px-3 flex items-center justify-center rounded-lg bg-[#010819] border border-white/20 text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
+            >
+              AI Assistant
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* 🔵 กลุ่มที่ 2: Tools (Diff | Copy | Export) */}
         <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">

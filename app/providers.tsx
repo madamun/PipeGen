@@ -16,7 +16,9 @@ export default function Providers({
 }) {
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <div className="flex flex-col min-h-screen flex-1">
+        {children}
+      </div>
       <Toaster richColors position="top-center" closeButton />
     </QueryClientProvider>
   );
