@@ -19,7 +19,7 @@ export default function FlipModeView({ mode }: FlipModeViewProps) {
       >
         {/* Face 1: Pipeline */}
         <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(0deg)]">
-          <Workspace />
+          <Workspace mode={mode} />
         </div>
         {/* Face 2: Template */}
         <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)]">

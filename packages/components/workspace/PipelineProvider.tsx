@@ -607,8 +607,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {
           finalContent = dataDraft.content;
           if (dataDraft.uiState) {
-            setComponentValues(dataDraft.uiState);
-            if (dataDraft.uiState.__syntax) setSyntaxProvider(dataDraft.uiState.__syntax);
+            const uiState = dataDraft.uiState as ComponentValues & { __syntax?: "github" | "gitlab" };
+            setComponentValues(uiState);
+            if (uiState.__syntax) setSyntaxProvider(uiState.__syntax);
           }
         } else {
           finalContent = dataGit.content || "";

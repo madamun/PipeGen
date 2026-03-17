@@ -220,15 +220,21 @@ export async function POST(req: NextRequest) {
       //
     }
     try {
-      await prisma.pipelineDraft.deleteMany({
-        where: {
-          userId: userId,
-          repoFullName: full_name,
-          filePath: path,
-        },
+      const repo = await prisma.repository.findFirst({
+        where: { fullName: full_name, userId },
       });
+      if (repo) {
+        const pipeline = await prisma.pipeline.findFirst({
+          where: { repoId: repo.id, filePath: path, branch: finalTargetBranch },
+        });
+        if (pipeline) {
+          await prisma.pipelineDraft.deleteMany({
+            where: { pipelineId: pipeline.id },
+          });
+        }
+      }
     } catch (e) {
-  
+      // Draft cleanup is non-critical
     }
 
     return Response.json({ ok: true, html_url });

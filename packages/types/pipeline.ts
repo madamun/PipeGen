@@ -11,6 +11,7 @@ export interface Repo {
 export interface PipelineFile {
   fileName: string;
   fullPath: string;
+  source?: "draft" | "git";
 }
 
 // Component / category types (align with API and Prisma shape)
