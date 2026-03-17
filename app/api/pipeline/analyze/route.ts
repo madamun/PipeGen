@@ -28,26 +28,33 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    const account = await prisma.account.findFirst({
-      where: { userId: session.user.id, providerId: provider },
-    });
-    if (!account?.accessToken) {
-      return NextResponse.json({ error: "Token not found" }, { status: 401 });
-    }
+  // ดึง Token ตาม Provider
+  const account = await prisma.account.findFirst({
+    where: { userId: session.user.id, providerId: provider },
+    select: { accessToken: true },
+  });
 
+  if (!account?.accessToken) {
+    return NextResponse.json(
+      { error: `No ${provider} token` },
+      { status: 401 },
+    );
+  }
+
+  try {
     const config = await analyzeRepo({
       repoFullName,
-      branch: branch ?? "main",
+      branch: branch || "main",
       provider,
       accessToken: account.accessToken,
     });
 
     return NextResponse.json({ config });
   } catch (error) {
-    console.error("Pipeline analyze error:", error);
-    const message =
-      error instanceof Error ? error.message : "Analysis failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Analyze error:", error);
+    return NextResponse.json(
+      { error: "Analysis failed" },
+      { status: 500 },
+    );
   }
 }

@@ -106,7 +106,7 @@ export default function CommitDialog(props: Props) {
 
   const displayFileName = selectedFile || (provider === "gitlab" ? ".gitlab-ci.yml" : "workflow");
 
-  function generateTitle() {
+  const generateTitle = React.useCallback(() => {
     const t =
       mode === "pull_request"
         ? provider === "gitlab"
@@ -114,18 +114,31 @@ export default function CommitDialog(props: Props) {
           : `Update workflow: ${displayFileName}`
         : `Update ${displayFileName}`;
     setTitle(t);
-  }
+  }, [mode, provider, displayFileName]);
 
-  function generateDescription() {
+  const generateDescription = React.useCallback(() => {
     const desc = `Update ${displayFileName} via PipeGen\n\nTarget: ${targetPath}\nBranch: ${branch || "main"}`;
     setMessage(desc);
-  }
+  }, [displayFileName, targetPath, branch]);
 
+  const prevTargetPath = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (open && targetPath !== prevTargetPath.current) {
+      prevTargetPath.current = targetPath;
+      setTitle("");
+      setMessage("");
+    }
+  }, [open, targetPath]);
   const handleOpenChange = React.useCallback(
     (next: boolean) => {
       if (!next) {
-        setStep("form");
-        setBranchDropdownOpen(false);
+        setTimeout(() => {
+          setStep("form");
+          setBranchDropdownOpen(false);
+          setTitle(""); 
+          setMessage(""); 
+        }, 300); 
       }
       setOpen(next);
     },
@@ -184,7 +197,8 @@ export default function CommitDialog(props: Props) {
           : undefined,
       });
 
-      setOpen(false);
+      handleOpenChange(false);
+
     } catch (err) {
       toast.error((err as Error)?.message || "Network or server error");
     } finally {
@@ -208,7 +222,7 @@ export default function CommitDialog(props: Props) {
       <DialogContent
         key={selectedRepo?.full_name || "no-repo"}
         className="max-w-[28rem] w-full border border-[#B4CAFD] text-slate-50
-        bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]"
+        bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)] [&>button]:hidden"
       >
         <DialogHeader>
           <DialogTitle className="text-xl flex items-center gap-2">
@@ -231,185 +245,186 @@ export default function CommitDialog(props: Props) {
         </DialogHeader>
 
         {step === "form" && (
-        <div className="space-y-4">
-          {/* แสดง Target Path ให้ชัดเจน */}
-          <div className="text-xs text-slate-300 bg-black/20 p-2 rounded flex items-center gap-2 font-mono">
-            <UploadCloud className="w-3 h-3 text-blue-400" />
-            Target: <span className="text-green-300">{targetPath}</span>
-          </div>
+          <div className="space-y-4">
+            {/* แสดง Target Path ให้ชัดเจน */}
+            <div className="text-xs text-slate-300 bg-black/20 p-2 rounded flex items-center gap-2 font-mono">
+              <UploadCloud className="w-3 h-3 text-blue-400" />
+              Target: <span className="text-green-300">{targetPath}</span>
+            </div>
 
-          {/* Branch: input (type) + button (open dropdown to select) */}
-          <div className="space-y-2">
-            <Label className="text-slate-200">Branch</Label>
-            <div className="flex rounded-md border border-white/20 bg-[#0f1e50] overflow-hidden">
-              <Input
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                placeholder={loadingBranches ? "Loading..." : "Type branch name or select below"}
-                disabled={loadingBranches}
-                className="rounded-none border-0 border-r border-white/20 bg-transparent text-white font-mono focus-visible:ring-0 focus-visible:ring-offset-0"
-                aria-invalid={branch.trim() !== "" && !branchValid}
-              />
-              <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={loadingBranches || branchNames.length === 0}
-                    className="flex items-center justify-center px-2 border-l border-white/20 text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
-                    aria-label="Open branch list"
+            {/* Branch: input (type) + button (open dropdown to select) */}
+            <div className="space-y-2">
+              <Label className="text-slate-200">Branch</Label>
+              <p className="text-xs text-slate-400">Select existing branch or type a new name to create one.</p>
+              <div className="flex rounded-md border border-white/20 bg-[#0f1e50] overflow-hidden">
+                <Input
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  placeholder={loadingBranches ? "Loading..." : "Select or type new branch name..."}
+                  disabled={loadingBranches}
+                  className="bg-black/30 border-white/10"
+                  aria-invalid={branch.trim() !== "" && !branchValid}
+                />
+                <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
+                  <PopoverTrigger asChild>
+                    <button 
+                      type="button"
+                      disabled={loadingBranches || branchNames.length === 0}
+                      className="flex items-center justify-center px-2 border-l border-white/20 text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
+                      aria-label="Open branch list"
+                    >
+                      <ChevronDown className="w-4 h-4" aria-hidden />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    sideOffset={4}
+                    className="min-w-[var(--radix-popover-trigger-width)] max-h-60 overflow-auto p-1 bg-[#0f1e50] text-white border border-white/20 rounded-md"
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                   >
-                    <ChevronDown className="w-4 h-4" aria-hidden />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  sideOffset={4}
-                  className="min-w-[var(--radix-popover-trigger-width)] max-h-60 overflow-auto p-1 bg-[#0f1e50] text-white border border-white/20 rounded-md"
-                  onOpenAutoFocus={(e) => e.preventDefault()}
+                    {branchNames.length === 0 ? (
+                      <p className="px-2 py-1.5 text-sm text-slate-400">No branches</p>
+                    ) : (
+                      branchNames.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            setBranch(name);
+                            setBranchDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-white/10 focus:bg-white/10 outline-none cursor-pointer"
+                        >
+                          {name}
+                        </button>
+                      ))
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {branch.trim() !== "" && !branchNames.includes(branch) && !isValidBranchName(branch) && (
+                <p className="text-xs text-amber-300">
+                  Use only letters, numbers, /, -, _, and .
+                </p>
+              )}
+              {branch.trim() !== "" && !branchNames.includes(branch) && isValidBranchName(branch) && (
+                <p className="text-xs text-slate-400">
+                  New branch will be created from {selectedRepo?.default_branch || "main"}.
+                </p>
+              )}
+              {isErrorBranches && errorBranches && (
+                <p className="text-xs text-amber-300">
+                  Could not load branches: {errorBranches instanceof Error ? errorBranches.message : "Unknown error"}
+                </p>
+              )}
+            </div>
+
+            {/* Title */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-slate-200">Title</Label>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 text-xs border border-white/30 text-slate-500 hover:bg-white/10 hover:text-slate-300 gap-1"
+                  onClick={generateTitle}
                 >
-                  {branchNames.length === 0 ? (
-                    <p className="px-2 py-1.5 text-sm text-slate-400">No branches</p>
-                  ) : (
-                    branchNames.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => {
-                          setBranch(name);
-                          setBranchDropdownOpen(false);
-                        }}
-                        className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-white/10 focus:bg-white/10 outline-none cursor-pointer"
-                      >
-                        {name}
-                      </button>
-                    ))
-                  )}
-                </PopoverContent>
-              </Popover>
+                  <Sparkles className="h-3 w-3" />
+                  Generate
+                </Button>
+              </div>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={
+                  mode === "pull_request"
+                    ? provider === "gitlab"
+                      ? "Merge Request Title"
+                      : "Pull Request Title"
+                    : "Commit Title"
+                }
+                className="bg-black/30 border-white/10"
+              />
             </div>
-            {branch.trim() !== "" && !branchNames.includes(branch) && !isValidBranchName(branch) && (
-              <p className="text-xs text-amber-300">
-                Use only letters, numbers, /, -, _, and .
-              </p>
-            )}
-            {branch.trim() !== "" && !branchNames.includes(branch) && isValidBranchName(branch) && (
-              <p className="text-xs text-slate-400">
-                New branch will be created from {selectedRepo?.default_branch || "main"}.
-              </p>
-            )}
-            {isErrorBranches && errorBranches && (
-              <p className="text-xs text-amber-300">
-                Could not load branches: {errorBranches instanceof Error ? errorBranches.message : "Unknown error"}
-              </p>
-            )}
-          </div>
 
-          {/* Title */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-slate-200">Title</Label>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="h-7 text-xs border border-white/30 text-slate-300 hover:bg-white/10 gap-1"
-                onClick={generateTitle}
+            {/* Message */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-slate-200">Commit Message</Label>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 text-xs border border-white/30 text-slate-500 hover:bg-white/10 hover:text-slate-300 gap-1"
+                  onClick={generateDescription}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Generate
+                </Button>
+              </div>
+              <Textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Description..."
+                className="min-h-20 bg-black/30 border-white/10"
+              />
+            </div>
+
+            {/* Push Type */}
+            <div className="space-y-2">
+              <Label className="text-slate-200">Action Type</Label>
+              <RadioGroup
+                value={mode}
+                onValueChange={(v) => setMode(v as Mode)}
+                className="flex flex-col gap-3"
               >
-                <Sparkles className="h-3 w-3" />
-                Generate
+                <label
+                  className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${mode === "pull_request" ? "bg-white/10 border-blue-400" : "border-transparent hover:bg-white/5"}`}
+                >
+                  <RadioGroupItem value="pull_request" id="r-pr" />
+                  <div className="flex items-center gap-2">
+                    <GitPullRequest className="w-4 h-4 text-purple-300" />
+                    <span className="text-sm">
+                      {provider === "gitlab"
+                        ? "Merge Request (MR)"
+                        : "Pull Request (PR)"}
+                    </span>
+                  </div>
+                </label>
+
+                <label
+                  className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${mode === "push" ? "bg-white/10 border-blue-400" : "border-transparent hover:bg-white/5"}`}
+                >
+                  <RadioGroupItem value="push" id="r-push" />
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-green-300" />
+                    <span className="text-sm">Direct Push</span>
+                  </div>
+                </label>
+              </RadioGroup>
+            </div>
+
+            <div className="w-full h-0.5 bg-[#3b82f6]/30 my-2"></div>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                className="w-full bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={disabled}
+                onClick={() => setStep("preview")}
+                title={disabled ? "Select a repository and a file to commit" : undefined}
+              >
+                Preview
+              </Button>
+              <Button
+                variant="secondary"
+                className="w-full border border-white/50 text-white bg-transparent hover:bg-white/10 rounded-lg py-2"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
               </Button>
             </div>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={
-                mode === "pull_request"
-                  ? provider === "gitlab"
-                    ? "Merge Request Title"
-                    : "Pull Request Title"
-                  : "Commit Title"
-              }
-              className="bg-black/30 border-white/10"
-            />
           </div>
-
-          {/* Message */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-slate-200">Commit Message</Label>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="h-7 text-xs border border-white/30 text-slate-300 hover:bg-white/10 gap-1"
-                onClick={generateDescription}
-              >
-                <Sparkles className="h-3 w-3" />
-                Generate
-              </Button>
-            </div>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Description..."
-              className="min-h-20 bg-black/30 border-white/10"
-            />
-          </div>
-
-          {/* Push Type */}
-          <div className="space-y-2">
-            <Label className="text-slate-200">Action Type</Label>
-            <RadioGroup
-              value={mode}
-              onValueChange={(v) => setMode(v as Mode)}
-              className="flex flex-col gap-3"
-            >
-              <label
-                className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${mode === "pull_request" ? "bg-white/10 border-blue-400" : "border-transparent hover:bg-white/5"}`}
-              >
-                <RadioGroupItem value="pull_request" id="r-pr" />
-                <div className="flex items-center gap-2">
-                  <GitPullRequest className="w-4 h-4 text-purple-300" />
-                  <span className="text-sm">
-                    {provider === "gitlab"
-                      ? "Merge Request (MR)"
-                      : "Pull Request (PR)"}
-                  </span>
-                </div>
-              </label>
-
-              <label
-                className={`flex items-center gap-3 cursor-pointer p-2 rounded border transition-all ${mode === "push" ? "bg-white/10 border-blue-400" : "border-transparent hover:bg-white/5"}`}
-              >
-                <RadioGroupItem value="push" id="r-push" />
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-green-300" />
-                  <span className="text-sm">Direct Push</span>
-                </div>
-              </label>
-            </RadioGroup>
-          </div>
-
-          <div className="w-full h-0.5 bg-[#3b82f6]/30 my-2"></div>
-
-          <div className="flex flex-col gap-2 pt-1">
-            <Button
-              className="w-full bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={disabled}
-              onClick={() => setStep("preview")}
-              title={disabled ? "Select a repository and a file to commit" : undefined}
-            >
-              Preview
-            </Button>
-            <Button
-              variant="secondary"
-              className="w-full border border-white/50 text-white bg-transparent hover:bg-white/10 rounded-lg py-2"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
         )}
 
         {step === "preview" && (

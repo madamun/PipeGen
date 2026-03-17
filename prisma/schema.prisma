@@ -12,12 +12,25 @@ model User {
   email         String       @unique
   emailVerified Boolean?
   image         String?
+<<<<<<< HEAD
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   accounts      Account[]
   pipelines     Pipeline[]
   repositories  Repository[]
   sessions      Session[]
+=======
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  // ความสัมพันธ์กับโปรเจกต์
+  repositories Repository[]
+  pipelines    Pipeline[]
+  histories    PipelineHistory[]
+>>>>>>> main
 
   @@map("user")
 }
@@ -138,4 +151,26 @@ model ComponentSyntax {
   component   PipelineComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
 
   @@map("component_syntax")
+}
+
+// ==========================================
+// 4. ส่วน History & Rollback System
+// ==========================================
+
+model PipelineHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String   
+  repoFullName  String  
+  branch        String   
+  filePath      String   
+  commitMessage String   
+  commitUrl     String?  
+  actionType    String   
+  yamlContent   String   @db.Text 
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("pipeline_history")
 }

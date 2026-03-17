@@ -1,4 +1,4 @@
-// src/components/layout/RightPanel/EditorToolbar.tsx
+// pakages/components/layout/RightPanel/EditorToolbar.tsx
 
 "use client";
 
@@ -100,7 +100,7 @@ export default function EditorToolbar({
   return (
     // ✅ 2. เอา TooltipProvider มาครอบ (delayDuration=200 คือเอาเมาส์ชี้ 0.2 วิแล้วเด้งเลย)
     <TooltipProvider delayDuration={200}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {/* 🟢 กลุ่มที่ 1: Zoom Only */}
         <div className="flex items-center bg-[#010819] border border-white/20 rounded-lg overflow-hidden h-8 shadow-sm select-none">
           <Tooltip>

@@ -1,4 +1,4 @@
-  // src/app/api/pipeline/commit/route.ts
+  // app/api/pipeline/commit/route.ts
   import { NextResponse } from "next/server";
   import { prisma } from "../../../../packages/server/prisma";
   import { auth } from "../../../../packages/server/auth";
@@ -145,6 +145,20 @@
           where: { pipelineId: pipeline.id },
         });
       }
+
+      await prisma.pipelineHistory.create({
+        data: {
+          userId: session.user.id,
+          provider: provider, // github หรือ gitlab
+          repoFullName: repoFullName,
+          branch: branch || "main",
+          filePath: filePath,
+          commitMessage: message || "Quick Save via PipeGen",
+          commitUrl: null, // Quick save อาจจะไม่ได้ return URL กลับมาตรงๆ
+          actionType: "push",
+          yamlContent: content, 
+        },
+      });
 
       return NextResponse.json({ success: true });
     } catch (error) {

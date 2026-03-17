@@ -20,6 +20,7 @@ import {
   GitBranch,
   GitPullRequest,
   Github,
+  Gitlab,
 } from "lucide-react";
 import { usePipeline } from "../workspace/PipelineProvider";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -47,7 +48,7 @@ type Repo = {
 
 export default function RepoPicker(props: { children?: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
-
+  const [isGitlabManagerOpen, setIsGitlabManagerOpen] = React.useState(false);
   const { provider, setSelectedRepo, setSelectedBranch } = usePipeline();
   const {
     data: reposData,
@@ -93,131 +94,143 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
     setOpen(false);
   }
 
-  // ฟังก์ชันวิ่งไปหน้าตั้งค่า GitHub App
   const handleManageRepos = () => {
-    // 🔴 สิ่งที่ต้องทำ: เปลี่ยน "pipegen-ci" เป็นชื่อแอป GitHub ของคุณจริงๆ
-    window.open("https://github.com/apps/pipegen-ci/installations/new", "_blank");
+    if (provider === "github") {
+      window.open("https://github.com/apps/pipegen-ci/installations/new", "_blank");
+    } else if (provider === "gitlab") {
+      setIsGitlabManagerOpen(true); // เปิดหน้าต่างของ GitLab แทน
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {props.children ?? (
-          <button
-            className="ml-1 inline-flex h-8 min-h-9 items-center gap-1.5 rounded-md px-2 py-2 text-slate-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
-            aria-label="Change repository"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        )}
-      </DialogTrigger>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          {props.children ?? (
+            <button
+              className="ml-1 inline-flex h-8 min-h-9 items-center gap-1.5 rounded-md px-2 py-2 text-slate-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2"
+              aria-label="Change repository"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          )}
+        </DialogTrigger>
 
-      <DialogContent
-        className="!max-w-none !w-[700px] !h-[600px] border border-[#B4CAFD]
-                   bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]
-                   text-slate-50 flex flex-col p-6"
-      >
-        <VisuallyHidden>
-          <DialogTitle>Select Repository</DialogTitle>
-        </VisuallyHidden>
+        <DialogContent
+          className="!max-w-none !w-[700px] !h-[600px] border border-[#B4CAFD]
+                     bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)]
+                     text-slate-50 flex flex-col p-6"
+        >
+          <VisuallyHidden>
+            <DialogTitle>Select Repository</DialogTitle>
+          </VisuallyHidden>
 
-        <Tabs defaultValue="my" className="w-full flex flex-col h-full">
-          <div className="flex items-center justify-between mb-4 shrink-0 mt-4">
-            <TabsList className="h-10 gap-2 bg-transparent p-0">
-              <TabsTrigger
-                value="my"
-                className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
-              >
-                My Projects
-              </TabsTrigger>
-              <TabsTrigger
-                value="co"
-                className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
-              >
-                Co-Projects
-              </TabsTrigger>
-            </TabsList>
+          <Tabs defaultValue="my" className="w-full flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4 shrink-0 mt-4">
+              <TabsList className="h-10 gap-2 bg-transparent p-0">
+                <TabsTrigger
+                  value="my"
+                  className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+                >
+                  My Projects
+                </TabsTrigger>
+                <TabsTrigger
+                  value="co"
+                  className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+                >
+                  Co-Projects
+                </TabsTrigger>
+              </TabsList>
 
-            {/* กลุ่มปุ่ม Action ฝั่งขวา (Manage & Refresh) */}
-            <div className="flex items-center gap-2">
-              {provider === "github" && (
+              {/* กลุ่มปุ่ม Action ฝั่งขวา (Manage & Refresh) */}
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
                   onClick={handleManageRepos}
-                  title="Choose which repositories PipeGen can access"
+                  title="Manage repository access"
                 >
-                  <Github className="mr-2 h-4 w-4" />
+                  {provider === "github" ? (
+                    <Github className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Gitlab className="mr-2 h-4 w-4" />
+                  )}
                   Manage Access
                 </Button>
-              )}
 
-              <Button
-                size="sm"
-                variant="outline"
-                className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
-                onClick={() => refetch()}
-                disabled={loading || isFetching}
-              >
-                <RefreshCw
-                  className={`mr-2 h-4 w-4 ${loading || isFetching ? "animate-spin" : ""}`}
-                />
-                Refresh
-              </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
+                  onClick={() => refetch()}
+                  disabled={loading || isFetching}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${loading || isFetching ? "animate-spin" : ""}`}
+                  />
+                  Refresh
+                </Button>
+              </div>
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
-            {isError && error ? (
-              <div className="p-6 text-center flex flex-col items-center gap-3">
-                <p className="text-sm text-amber-200">
-                  Could not load repositories:{" "}
-                  {error instanceof Error ? error.message : "Unknown error"}
-                </p>
-                {/* ถ้าดึงข้อมูลพลาด ก็มีปุ่ม Manage ให้กดแก้ปัญหาได้ */}
-                {provider === "github" && (
+            <div className="flex-1 overflow-y-auto no-scrollbar pr-2">
+              {isError && error ? (
+                <div className="p-6 text-center flex flex-col items-center gap-3">
+                  <p className="text-sm text-amber-200">
+                    Could not load repositories:{" "}
+                    {error instanceof Error ? error.message : "Unknown error"}
+                  </p>
                   <Button
                     size="sm"
                     variant="outline"
                     className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors mb-2"
                     onClick={handleManageRepos}
                   >
-                    <Github className="mr-2 h-4 w-4" />
-                    Check GitHub App Permissions
+                    {provider === "github" ? (
+                      <Github className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Globe className="mr-2 h-4 w-4" />
+                    )}
+                    {provider === "github" ? "Check GitHub App Permissions" : "Select GitLab Projects"}
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="bg-white/20 hover:bg-white/30 text-white border-none"
-                  onClick={() => refetch()}
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Retry
-                </Button>
-              </div>
-            ) : loading && !repos.length ? (
-              <GridSkeleton />
-            ) : (
-              <>
-                <TabsContent value="my" className=" m-1 mt-1">
-                  {/* ส่ง provider ลงไปด้วย เพื่อให้ RepoGrid รู้ */}
-                  <RepoGrid repos={my} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
-                </TabsContent>
-                <TabsContent value="co" className="m-0 mt-0">
-                  <RepoGrid repos={co} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
-                </TabsContent>
-              </>
-            )}
-          </div>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-white/20 hover:bg-white/30 text-white border-none"
+                    onClick={() => refetch()}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Retry
+                  </Button>
+                </div>
+              ) : loading && !repos.length ? (
+                <GridSkeleton />
+              ) : (
+                <>
+                  <TabsContent value="my" className=" m-1 mt-1">
+                    <RepoGrid repos={my} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
+                  </TabsContent>
+                  <TabsContent value="co" className="m-0 mt-0">
+                    <RepoGrid repos={co} onPick={pick} provider={provider} handleManageRepos={handleManageRepos} />
+                  </TabsContent>
+                </>
+              )}
+            </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. วางหน้าต่าง GitlabManagerModal ไว้ตรงนี้! (นอก Dialog หลัก) */}
+      <GitlabManagerModal
+        open={isGitlabManagerOpen}
+        onOpenChange={setIsGitlabManagerOpen}
+        onSaved={refetch}
+      />
+    </>
   );
 }
 
-// ✅ อัปเดต RepoGrid ให้รับ provider กับ handleManageRepos มาด้วย
 function RepoGrid({
   repos,
   onPick,
@@ -230,27 +243,30 @@ function RepoGrid({
   handleManageRepos: () => void;
 }) {
 
-  // ✅ ถ้า Repo เป็น 0 ให้แสดงหน้าจอสวยๆ บังคับให้ไปตั้งค่า
+  // ถ้า Repo เป็น 0 ให้แสดงหน้าจอสวยๆ บังคับให้ไปตั้งค่า
   if (!repos.length)
     return (
       <div className="p-10 flex flex-col items-center justify-center h-64 text-center mt-10">
         <div className="bg-blue-500/20 p-5 rounded-full mb-6 border border-blue-500/30">
-          <Github className="w-12 h-12 text-blue-300" />
+          {provider === "github" ? (
+            <Github className="w-12 h-12 text-green-300" />
+          ) : (
+            <Gitlab className="w-12 h-12 text-orange-400" /> // ใช้ Globe สีส้มแทน GitLab (หรือถ้ามี Icon GitLab ก็ใช้ได้เลยครับ)
+          )}
         </div>
         <h3 className="text-2xl font-bold text-white mb-3">Connect Your Repositories</h3>
         <p className="text-sm text-slate-300 max-w-sm mb-8 leading-relaxed">
           You have successfully logged in! Now, please grant PipeGen access to the repositories you want to work with.
         </p>
-        {provider === "github" && (
-          <Button
-            size="lg"
-            className="bg-[#3b82f6] hover:bg-[#2f6ad6] text-white shadow-lg shadow-blue-500/20 text-md px-6 py-6"
-            onClick={handleManageRepos}
-          >
-            <LockKeyhole className="mr-3 h-5 w-5" />
-            Select Repositories
-          </Button>
-        )}
+
+        <Button
+          size="lg"
+          className="bg-[#3b82f6] hover:bg-[#2f6ad6] text-white shadow-lg shadow-blue-500/20 text-md px-6 py-6"
+          onClick={handleManageRepos}
+        >
+          <LockKeyhole className="mr-3 h-5 w-5" />
+          Select Repositories
+        </Button>
       </div>
     );
 
@@ -396,5 +412,121 @@ function GridSkeleton() {
         />
       ))}
     </div>
+  );
+}
+
+function GitlabManagerModal({
+  open,
+  onOpenChange,
+  onSaved
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["gitlab-all-repos"],
+    queryFn: async () => {
+      const res = await fetch("/api/gitlab/repos?all=true", { credentials: "include" });
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  React.useEffect(() => {
+    if (data?.allowedIds) {
+      setSelectedIds(new Set(data.allowedIds));
+    }
+  }, [data]);
+
+  const toggleRepo = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const handleSave = async () => {
+    if (!data?.repos) return;
+    setIsSaving(true);
+
+    const reposToSave = data.repos
+      .filter((r: any) => selectedIds.has(String(r.id)))
+      .map((r: any) => ({ id: r.id, full_name: r.full_name }));
+
+    try {
+      await fetch("/api/gitlab/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedRepos: reposToSave }),
+      });
+      onSaved();
+      onOpenChange(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!max-w-none !w-[700px] !h-[600px] flex flex-col  bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)] text-white ">
+
+        <div className="shrink-0">
+          <DialogTitle className="text-xl font-semibold">Select GitLab Projects</DialogTitle>
+          <p className="text-sm text-slate-400 mt-2 mb-4">
+            Choose which projects you want to make visible in PipeGen.
+          </p>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-2 border border-slate-700 rounded-lg p-3 bg-slate-950/50 shadow-inner no-scrollbar">
+          {isLoading ? (
+            <div className="h-full flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 animate-spin text-slate-600" />
+            </div>
+          ) : data?.repos?.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-slate-400">
+              No GitLab projects found.
+            </div>
+          ) : (
+            data?.repos?.map((repo: any) => (
+              <label
+                key={repo.id}
+                className="flex items-center space-x-3 p-3.5 rounded-md hover:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-700 transition-all"
+              >
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900"
+                  checked={selectedIds.has(String(repo.id))}
+                  onChange={() => toggleRepo(String(repo.id))}
+                />
+                <span className="text-[15px] font-medium text-slate-200">{repo.full_name}</span>
+              </label>
+            ))
+          )}
+        </div>
+
+        <div className="shrink-0 flex justify-end gap-3 mt-6 pt-4 border-t border-slate-500">
+          <Button className="bg-red-500 hover:bg-red-400 text-wiite" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6"
+            onClick={handleSave}
+            disabled={isSaving || isLoading}
+          >
+            {isSaving ? (
+              <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+            ) : (
+              "Save Selection"
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

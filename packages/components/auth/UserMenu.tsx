@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { authClient } from "../../lib/auth-client";
-// 1. เพิ่มไอคอน Copy กับ Check เข้ามา
-import { User, LogOut, Github, Gitlab, Mail, Copy, Check } from "lucide-react";
+import { User, LogOut, Github, Gitlab, Mail, Copy, Check, History, Home } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,22 +24,39 @@ import Image from "next/image";
 export default function UserMenu() {
   const { data } = authClient.useSession();
   const user = data?.user;
+  const router = useRouter();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  // 2. สร้าง State สำหรับจำว่ากดปุ่ม Copy ID หรือยัง
   const [hasCopiedId, setHasCopiedId] = useState(false);
+
+  // 1. เพิ่ม State สำหรับเก็บค่ายที่ใช้ล็อกอิน (default เป็น loading ก่อน)
+  const [provider, setProvider] = useState<"github" | "gitlab" | "loading">("loading");
 
   const initials = useMemo(() => {
     const n = user?.name || user?.email || "U";
     return n.slice(0, 2).toUpperCase();
   }, [user?.name, user?.email]);
 
+  // 2. ดึงข้อมูลว่า user คนนี้ล็อกอินด้วยอะไร (ใช้ API เดิมที่เรามีอยู่แล้ว)
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/auth/providers")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.providers?.includes("gitlab")) {
+          setProvider("gitlab");
+        } else {
+          setProvider("github"); // ถ้าไม่ใช่ gitlab ให้มองเป็น github ไว้ก่อน
+        }
+      })
+      .catch(() => setProvider("github"));
+  }, [user]);
+
   if (!data?.session || !user) return null;
 
-  // ฟังก์ชันสำหรับกดปุ่ม Copy ID
   const handleCopyId = () => {
     if (user?.id) {
-      navigator.clipboard.writeText(user.id); // สั่งก๊อปปี้ลง Clipboard
+      navigator.clipboard.writeText(user.id);
       setHasCopiedId(true);
       setTimeout(() => setHasCopiedId(false), 2000);
     }
@@ -109,6 +126,16 @@ export default function UserMenu() {
 
           <DropdownMenuItem
             className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
+            onSelect={() => {
+              router.push("/");
+            }}
+          >
+            <Home className="h-4 w-4 text-slate-400" />
+            Home
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
             onSelect={(e) => {
               e.preventDefault();
               setIsProfileOpen(true);
@@ -116,6 +143,16 @@ export default function UserMenu() {
           >
             <User className="h-4 w-4 text-slate-400" />
             View Profile
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus:bg-slate-800 focus:text-white data-[highlighted]:bg-slate-800 data-[highlighted]:text-white"
+            onSelect={() => {
+              router.push("/history");
+            }}
+          >
+            <History className="h-4 w-4 text-slate-400" />
+            Activity History
           </DropdownMenuItem>
 
           <DropdownMenuItem
@@ -177,15 +214,25 @@ export default function UserMenu() {
               </div>
             </div>
 
-            {/* โซน 2: Git Provider */}
+            {/* โซน 2: Git Provider (อัปเดตโลโก้และชื่อตามค่าย) */}
             <div className="flex flex-col gap-3">
               <span className="text-sm font-medium text-slate-300">Connected Provider</span>
               <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-4 py-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white/10 shrink-0">
-                  <Github className="h-5 w-5 text-white" />
+                  {/* เช็ค Provider เพื่อเปลี่ยนไอคอน */}
+                  {provider === "gitlab" ? (
+                    <Gitlab className="h-5 w-5 text-orange-400" />
+                  ) : provider === "github" ? (
+                    <Github className="h-5 w-5 text-white" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-slate-500 border-t-transparent animate-spin" />
+                  )}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium text-white">Git Account</span>
+                  {/* เช็ค Provider เพื่อเปลี่ยนชื่อ */}
+                  <span className="text-sm font-medium text-white">
+                    {provider === "gitlab" ? "GitLab Account" : provider === "github" ? "GitHub Account" : "Loading..."}
+                  </span>
                   <span className="text-xs text-slate-400">Connected for repositories</span>
                 </div>
                 <div className="ml-auto text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2.5 py-1 rounded-full border border-emerald-400/20">
@@ -199,11 +246,10 @@ export default function UserMenu() {
               <span className="text-sm font-medium text-slate-300">Account Details</span>
               <div className="flex flex-col gap-3">
 
-                {/* 🔥 กล่อง ID (มีปุ่ม Copy) */}
+                {/* กล่อง ID (มีปุ่ม Copy) */}
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
                   <div className="flex flex-col gap-1 overflow-hidden">
                     <span className="text-xs text-slate-400">Account ID</span>
-                    {/* ไม่ต้องตัดคำแล้ว ให้แสดงเต็มๆ เผื่อลากคลุม แต่ถ้าล้นให้ซ่อนด้วย truncate */}
                     <span className="text-sm font-mono text-slate-200 truncate">
                       {user.id || "usr_default"}
                     </span>

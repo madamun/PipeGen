@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60_000 },
+    queries: { staleTime: 20 * 60 * 1000 },
   },
 });
 

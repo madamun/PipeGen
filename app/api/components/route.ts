@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../packages/server/prisma";
 
 export async function GET() {
-  const categories = await prisma.componentCategory.findMany({
+    const categories = await prisma.componentCategory.findMany({
+    orderBy: { displayOrder: "asc" },
     include: {
       components: {
-        include: { syntaxes: true }, // เอา Template มาด้วย
-        // orderBy: { name: 'asc' }
+        orderBy: { id: "asc" },
+        include: { syntaxes: true },
       },
     },
-    // orderBy: { displayOrder: 'asc' }
   });
   return NextResponse.json(categories);
 }

@@ -54,7 +54,7 @@ export default function LoginPage() {
           <button
             onClick={() => handleLogin("github")}
             disabled={isLoading !== null}
-            className="flex w-full items-center justify-center gap-3 rounded-lg bg-[#24292e] px-4 py-3.5 text-sm font-medium text-white transition-all hover:bg-[#2c3137] hover:shadow-lg hover:shadow-black/50 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-3 rounded-lg bg-[#269d32] px-4 py-3.5 text-sm font-medium text-white transition-all hover:bg-[#3ea448] hover:shadow-lg hover:shadow-black/50 disabled:opacity-50"
           >
             <Github className="h-5 w-5" />
             {isLoading === "github" ? "Connecting..." : "Continue with GitHub"}

@@ -1,4 +1,4 @@
-// src/app/api/github/commit/route.ts
+// app/api/github/commit/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";
@@ -154,17 +154,30 @@ export async function POST(req: NextRequest) {
 
   try {
     if (mode === "push") {
-      // branch exists -> update; else create from baseBranch then push
+      
       const exists = await branchExists(branch);
       if (!exists) {
         const baseSha = await getBaseSha(baseBranch);
         await createBranch(baseSha, branch);
       }
       const result = await putFile(branch);
-      return Response.json({
-        ok: true,
-        html_url: result?.content?.html_url || result?.commit?.html_url || null,
+      const html_url = result?.content?.html_url || result?.commit?.html_url || null;
+
+      await prisma.pipelineHistory.create({
+        data: {
+          userId: session.user.id,
+          provider: "github",
+          repoFullName: full_name,
+          branch: branch,
+          filePath: path,
+          commitMessage: message || title || "Update via PipeGen",
+          commitUrl: html_url,
+          actionType: "push",
+          yamlContent: content,
+        },
       });
+
+      return Response.json({ ok: true, html_url });
     }
 
     // mode === "pull_request"
@@ -203,6 +216,20 @@ export async function POST(req: NextRequest) {
       throw new Error(`createPR ${pr.status} ${t.slice(0, 200)}`);
     }
     const prJ = await pr.json();
+
+    await prisma.pipelineHistory.create({
+      data: {
+        userId: session.user.id,
+        provider: "github",
+        repoFullName: full_name,
+        branch: newBranch, 
+        filePath: path,
+        commitMessage: message || title || "PipeGen changes",
+        commitUrl: prJ.html_url,
+        actionType: "pull_request",
+        yamlContent: content,
+      },
+    });
 
     return Response.json({ ok: true, html_url: prJ.html_url });
   } catch (e: any) {
