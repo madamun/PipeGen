@@ -1,4 +1,4 @@
-// pakages/components/layout/RightPanel/EditorToolbar.tsx
+// packages/components/layout/RightPanel/EditorToolbar.tsx
 
 "use client";
 
@@ -108,15 +108,15 @@ export default function EditorToolbar({
               <button
                 onClick={() => handleZoom("out")}
                 aria-label="Zoom Out"
-                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+                className="px-2 h-full text-slate-400 hover:text-white hover:bg-[#111d35] transition flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
-            >
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
+              >
               Zoom Out
             </TooltipContent>
           </Tooltip>
@@ -130,15 +130,15 @@ export default function EditorToolbar({
               <button
                 aria-label="Zoom In"
                 onClick={() => handleZoom("in")}
-                className="px-2 h-full text-slate-400 hover:text-white hover:bg-white/5 transition flex items-center justify-center border-l border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+                className="px-2 h-full text-slate-400 hover:text-white hover:bg-[#111d35] transition flex items-center justify-center border-l border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
-            >
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
+              >
               Zoom In
             </TooltipContent>
           </Tooltip>
@@ -151,15 +151,15 @@ export default function EditorToolbar({
               <button
                 onClick={onOpenAIPanel}
                 aria-label="Open AI Assistant"
-                className="h-8 px-3 flex items-center justify-center rounded-lg bg-[#010819] border border-white/20 text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+                className="h-8 px-3 flex items-center justify-center rounded-lg bg-[#010819] border border-white/20 text-slate-400 hover:text-white hover:bg-[#111d35] transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <MessageCircle className="w-4 h-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
-            >
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
+              >
               AI Assistant
             </TooltipContent>
           </Tooltip>
@@ -173,7 +173,7 @@ export default function EditorToolbar({
               <button
                 onClick={() => setIsDiffMode(!isDiffMode)}
                 aria-label={isDiffMode ? "Switch to Editor mode" : "View diff"}
-                className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819] ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"}`}
+                className={`flex items-center gap-2 px-3 h-full transition-all border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819] ${isDiffMode ? "text-blue-300 bg-blue-500/10" : "text-slate-400 hover:text-white hover:bg-[#111d35]"}`}
               >
                 {isDiffMode ? (
                   <FileCode className="w-4 h-4" />
@@ -186,9 +186,9 @@ export default function EditorToolbar({
               </button>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
-            >
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
+              >
               {isDiffMode ? "Switch to Editor Mode" : "View Code Differences"}
             </TooltipContent>
           </Tooltip>
@@ -199,7 +199,7 @@ export default function EditorToolbar({
               <button
                 onClick={handleCopy}
                 aria-label={copied ? "Copied" : "Copy code"}
-                className="px-3 h-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+                className="px-3 h-full text-slate-400 hover:text-white hover:bg-[#111d35] transition-colors flex items-center justify-center border-r border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 {copied ? (
                   <Check className="w-4 h-4 text-emerald-400" />
@@ -209,9 +209,9 @@ export default function EditorToolbar({
               </button>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
-              className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
-            >
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
+              >
               {copied ? "Copied to clipboard!" : "Copy Code"}
             </TooltipContent>
           </Tooltip>
@@ -220,13 +220,13 @@ export default function EditorToolbar({
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenuTrigger aria-label="Export options" className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
+                <DropdownMenuTrigger aria-label="Export options" className="h-full px-3 flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#111d35] transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]">
                   <Share className="w-4 h-4" />
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent
-                side="top"
-                className="bg-[#0f1e50] text-slate-200 border-white/20 text-xs px-2 py-1 leading-none font-medium tracking-wide"
+                side="bottom"
+                className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide" // <--- เปลี่ยนสีพื้นหลังที่นี่
               >
                 Export Options
               </TooltipContent>
