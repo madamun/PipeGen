@@ -109,12 +109,17 @@ export async function analyzeRepo(
   if (packageJsonRaw) {
     config.use_node = true;
 
-    const pnpmLock = await fetchFile("pnpm-lock.yaml");
-    if (pnpmLock) {
-      config.pkg_manager = "pnpm";
+    const bunLock = await fetchFile("bun.lockb") || await fetchFile("bun.lock");
+    if (bunLock) {
+      config.pkg_manager = "bun";
     } else {
-      const yarnLock = await fetchFile("yarn.lock");
-      if (yarnLock) config.pkg_manager = "yarn";
+      const pnpmLock = await fetchFile("pnpm-lock.yaml");
+      if (pnpmLock) {
+        config.pkg_manager = "pnpm";
+      } else {
+        const yarnLock = await fetchFile("yarn.lock");
+        if (yarnLock) config.pkg_manager = "yarn";
+      }
     }
 
     try {
@@ -148,8 +153,13 @@ export async function analyzeRepo(
           config.lint_cmd = `${config.pkg_manager} run lint`;
         }
       }
-
       switch (config.pkg_manager) {
+        case "bun":
+          config.install_cmd = "bun install --frozen-lockfile";
+          if (scripts?.test) config.test_cmd = "bun test";
+          if (scripts?.build) config.build_cmd = "bun run build";
+          if (scripts?.lint) config.lint_cmd = "bun run lint";
+          break;
         case "pnpm":
           config.install_cmd = "pnpm install --frozen-lockfile";
           break;

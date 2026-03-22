@@ -17,6 +17,7 @@ import {
   Bell,
 } from "lucide-react";
 import { Switch } from "../../../ui/switch";
+import { useRef, useEffect } from "react";
 import { usePipeline } from "../../../workspace/PipelineProvider";
 
 // Map Icon (เพิ่ม Icon ให้ครบหมวดหมู่ใหม่)
@@ -66,7 +67,27 @@ export default function SetupSection({
     selectedFile,
     selectedRepo,
     provider,
+    scrollTarget,
+    setScrollTarget,
   } = usePipeline();
+
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const timer = setTimeout(() => {
+      const el = sectionRefs.current[scrollTarget];
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-1", "ring-white/50", "pb-2",);
+        setTimeout(() => {
+        el.classList.remove("ring-1", "ring-white/50", "pb-2",);
+        }, 2000);
+      }
+      setScrollTarget(null);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [scrollTarget, setScrollTarget]);
 
   const toggleCategory = (id: string, currentOpen: boolean) => {
     setCategoriesOpen((prev) => ({ ...prev, [id]: !currentOpen }));
@@ -195,7 +216,8 @@ export default function SetupSection({
                     return (
                       <div
                         key={comp.id}
-                        className="mt-2 border-t border-white/5 pt-2 first:border-0 first:pt-0"
+                        ref={(el) => { sectionRefs.current[comp.name.toLowerCase()] = el; }}
+                        className="mt-2 border-t border-white/5 pt-2 first:border-0 first:pt-0 transition-all duration-300"
                       >
                         <button
                           onClick={() =>

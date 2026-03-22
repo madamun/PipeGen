@@ -6,7 +6,8 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Editor, { DiffEditor, OnMount } from "@monaco-editor/react";
 import { usePipeline } from "../../workspace/PipelineProvider";
 import { validateYaml, type YamlValidationError } from "../../../lib/pipelineEngine";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, FileCode, Plus, FolderOpen } from "lucide-react";
+
 
 interface EditorBodyProps {
   fontSize: number;
@@ -131,10 +132,12 @@ export default function EditorBody({ fontSize, isDiffMode, onValidationChange }:
   if (!selectedFile) {
     return (
       <div className="h-full w-full bg-[#010819] flex flex-col items-center justify-center text-slate-500 select-none px-4">
-        <div className="text-4xl mb-4 opacity-30 grayscale">🚀</div>
+        <div className="mx-auto h-12 w-12 rounded-full bg-white/5 grid place-items-center mb-4">
+          <FileCode className="h-6 w-6 text-slate-500" />
+        </div>
         <p className="text-sm font-medium">No file selected</p>
-        <p className="text-xs text-slate-600 mt-1 text-center max-w-xs">
-          Create a new file (+) or open one from the list (folder icon).
+        <p className="text-xs text-slate-600 mt-1 text-center max-w-xs flex items-center gap-1 justify-center">
+          Create a new file (<Plus className="h-3 w-3 inline" />) or open one from the list (<FolderOpen className="h-3 w-3 inline" />).
         </p>
       </div>
     );
