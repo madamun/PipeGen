@@ -12,25 +12,12 @@ model User {
   email         String       @unique
   emailVerified Boolean?
   image         String?
-<<<<<<< HEAD
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   accounts      Account[]
   pipelines     Pipeline[]
   repositories  Repository[]
   sessions      Session[]
-=======
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  accounts Account[]
-  sessions Session[]
-
-  // ความสัมพันธ์กับโปรเจกต์
-  repositories Repository[]
-  pipelines    Pipeline[]
-  histories    PipelineHistory[]
->>>>>>> main
 
   @@map("user")
 }
