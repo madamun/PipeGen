@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import LeftPanel from "../layout/LeftPanel/LeftPanel";
 import RightPanel from "../layout/RightPanel/RightPanel";
 import TemplateLeftPanel from "../template/TemplateLeftPanel";
@@ -15,14 +15,49 @@ function createId() {
   return crypto.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function Workspace({ mode }: { mode: AppMode }) {
+export default function Workspace({ mode, onToggleAI, aiPanelOpen }: { mode: AppMode; onToggleAI?: () => void; aiPanelOpen?: boolean }) {
   const { isCollapsed } = usePipeline();
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft>(emptyDraft);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [leftWidth, setLeftWidth] = useState(580);
+
+  // เปิด AI → หด Left เป็น 360, ปิด AI → กลับ 580
+  React.useEffect(() => {
+    if (aiPanelOpen) {
+      setLeftWidth((prev) => Math.min(prev, 360));
+    } else {
+      setLeftWidth(580);
+    }
+  }, [aiPanelOpen]);
+
+  const isResizingLeft = useRef(false);
 
   const gridClass = `grid gap-6 min-h-[calc(100dvh-128px)] h-[calc(100dvh-128px)] overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out ${
     isCollapsed ? "grid-cols-[80px_1fr]" : "grid-cols-1 lg:grid-cols-[580px_1fr]"
   }`;
+
+  const handleLeftResize = useCallback(() => {
+    if (isCollapsed) return;
+    isResizingLeft.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingLeft.current) return;
+      setLeftWidth(Math.max(360, Math.min(580, e.clientX)));
+    };
+
+    const handleMouseUp = () => {
+      isResizingLeft.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [isCollapsed]);
 
   const updateSection = useCallback((section: UserSection) => {
     setTemplateDraft((prev) => ({
@@ -101,12 +136,24 @@ export default function Workspace({ mode }: { mode: AppMode }) {
   }
 
   return (
-    <div className={gridClass}>
-      <div className="min-h-0 h-full overflow-hidden">
+    <div className="flex min-h-[calc(100dvh-128px)] h-[calc(100dvh-128px)] overflow-hidden">
+      <div
+        style={{ width: isCollapsed ? 80 : leftWidth }}
+        className="min-h-0 h-full overflow-hidden shrink-0"
+      >
         <LeftPanel />
       </div>
-      <div className="min-h-0 h-full overflow-hidden">
-        <RightPanel />
+      {!isCollapsed && (
+        <div
+          onMouseDown={handleLeftResize}
+          className="w-0.5 shrink-0 cursor-col-resize transition-all flex items-center"
+        >
+          <div className="h-28/30 w-full bg-white/3 rounded-full hover:bg-[#5184FB]/50 active:bg-[#5184FB]/50" />
+        </div>
+      
+      )}
+      <div className="min-h-0 h-full overflow-hidden flex-1">
+        <RightPanel onOpenAIPanel={onToggleAI} />
       </div>
     </div>
   );

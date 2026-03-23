@@ -8,12 +8,14 @@ import { getSuggestions } from "../../../lib/suggestions";
 import SuggestionsDialog from "../../suggestions/SuggestionsDialog";
 
 export default function TopbarActions() {
-  const { autoSetup, isAnalyzing, componentValues, categories } = usePipeline();
+  // 🟢 ดึงข้อมูลทั้งหมดรวมถึง dismissedSuggestions มาจาก Context ทีเดียวเลย
+  const { autoSetup, isAnalyzing, componentValues, categories, activeTab, dismissedSuggestions } = usePipeline();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
+  // 🟢 ใช้ dismissedSuggestions จาก Context ในการคำนวณแทน
   const suggestions = useMemo(
-    () => getSuggestions(componentValues, categories),
-    [componentValues, categories],
+    () => activeTab ? getSuggestions(componentValues, categories, dismissedSuggestions) : [],
+    [componentValues, categories, activeTab, dismissedSuggestions],
   );
   const suggestionCount = suggestions.length;
 
@@ -22,21 +24,26 @@ export default function TopbarActions() {
       <Button
         onClick={() => setSuggestionsOpen(true)}
         variant="outline"
-        className="h-9 rounded-xl border-white/20 bg-white/5 text-slate-200 hover:bg-white/10 relative"
+        // ⚪️ ปุ่ม Suggestions: เรียบๆ คลีนๆ ไม่แย่งซีน
+        className="group h-9 px-4 rounded-xl border  border-white/10 bg-white/5 text-white/80 hover:text-white hover:bg-white/10 transition-all duration-200 relative shadow-sm"
         title="Recommended additions"
       >
-        <Lightbulb className="mr-2 h-4 w-4 text-yellow-400" />
-        Suggestions
+        <Lightbulb className="mr-2 h-4 w-4 text-amber-400 transition-transform duration-300 group-hover:scale-110 group-hover:brightness-125" />
+        <span className="font-medium tracking-wide text-sm">Suggestions</span>
+        
         {suggestionCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-medium text-white">
+          // ใช้ border-2 border-[#02184B] เจาะขอบตัวเลขให้กลืนกับพื้นหลัง Navbar
+          <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white shadow-sm border-2 border-[#02184B] animate-in zoom-in duration-300">
             {suggestionCount}
           </span>
         )}
       </Button>
+
       <SuggestionsDialog
         open={suggestionsOpen}
         onOpenChange={setSuggestionsOpen}
       />
+
       <Button
         onClick={autoSetup}
         disabled={isAnalyzing}
@@ -44,13 +51,14 @@ export default function TopbarActions() {
       >
         {isAnalyzing ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Analyzing repository...
+            <Loader2 className="mr-2 h-4 w-4 animate-spin text-white/80" />
+            <span className="font-medium tracking-wide text-sm">Analyzing...</span>
           </>
         ) : (
           <>
-            <Sparkles className="mr-2 h-4 w-4 text-yellow-400" />
-            Auto Setup
+            {/* เปลี่ยนสีดาวให้เป็นฟ้าอ่อน (blue-200) เพื่อให้คุมโทนน้ำเงินทั้งปุ่ม */}
+            <Sparkles className="mr-2 h-4 w-4 text-blue-200 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+            <span className="font-medium tracking-wide text-sm">Auto Setup</span>
           </>
         )}
       </Button>

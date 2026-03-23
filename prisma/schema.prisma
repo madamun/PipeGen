@@ -15,9 +15,10 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   accounts      Account[]
-  pipelines     Pipeline[]
   repositories  Repository[]
   sessions      Session[]
+  pipelines     Pipeline[]
+  histories     PipelineHistory[]
 
   @@map("user")
 }

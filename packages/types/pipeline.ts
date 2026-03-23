@@ -111,6 +111,7 @@ export interface PipelineContextType {
     id: string,
     val: string | number | boolean | string[] | undefined,
   ) => void;
+  applyMultipleValues: (config: Record<string, string | number | boolean | string[] | undefined>) => void;
 
   autoSetup: () => Promise<void>;
 
@@ -130,4 +131,10 @@ export interface PipelineContextType {
       | ((prev: Record<string, boolean>) => Record<string, boolean>)
   ) => void;
   navigateToBlock: (categoryId: string, componentName: string) => void;
+  scrollTarget: string | null;
+  setScrollTarget: (v: string | null) => void;
+  dismissedSuggestions: Set<string>;
+  dismissSuggestion: (id: string) => void;
+  resetDismissedSuggestions: () => void;
+  
 }

@@ -104,11 +104,11 @@ export default function Navbar() {
       </div>
 
       {/* กลาง: SEARCH */}
-      <div className="flex flex-1 justify-center items-center">
+      {/* <div className="flex flex-1 justify-center items-center">
         <div className="w-[clamp(200px,30vw,400px)]">
           <SearchBar />
         </div>
-      </div>
+      </div> */}
 
       {/* ขวา: GITCONNECT */}
       <div className="flex flex-1 justify-end items-center gap-4">

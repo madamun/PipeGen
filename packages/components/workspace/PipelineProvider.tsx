@@ -84,30 +84,54 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const [forceReloadTrigger, setForceReloadTrigger] = useState(0);
 
-  // Left Panel open/close (for Suggestions "Go to Left Panel")
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [categoriesOpen, setCategoriesOpen] = useState<
-    Record<string, boolean>
-  >({});
-  const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [categoriesOpen, setCategoriesOpen] = useState<Record<string, boolean>>({});
+  const [sectionsOpen, setSectionsOpen] = useState<Record<string, boolean>>({});
+
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("pipegen_dismissed_suggestions");
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  const dismissSuggestion = useCallback((id: string) => {
+    setDismissedSuggestions((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem("pipegen_dismissed_suggestions", JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  const resetDismissedSuggestions = useCallback(() => {
+    setDismissedSuggestions(new Set());
+    localStorage.removeItem("pipegen_dismissed_suggestions");
+  }, []);
 
   const navigateToBlock = useCallback(
     (categoryId: string, componentName: string) => {
       setIsCollapsed(false);
-      setCategoriesOpen((prev) => ({ ...prev, [categoryId]: true }));
+      setCategoriesOpen((prev) => {
+        const next: Record<string, boolean> = {};
+        Object.keys(prev).forEach((k) => (next[k] = false));
+        next[categoryId] = true;
+        return next;
+      });
       setSectionsOpen((prev) => ({
         ...prev,
         [componentName.toLowerCase()]: true,
       }));
+      setScrollTarget(componentName.toLowerCase());
     },
     [],
   );
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
-  
+
   const componentValuesRef = useRef<ComponentValues>({});
   useEffect(() => { componentValuesRef.current = componentValues; }, [componentValues]);
 
@@ -127,7 +151,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (!fileName) return "";
     const existingFile = fileList.find((f) => f.fileName === fileName || f.fullPath === fileName);
     if (existingFile) return existingFile.fullPath;
-
     if (selectedRepo?.provider === "gitlab") {
       if (fileName === ".gitlab-ci.yml" || fileName.includes("/")) return fileName;
       return `.gitlab/ci/${fileName}`;
@@ -139,7 +162,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     async (content: string, tabToSave: string) => {
       if (!selectedRepo || !tabToSave) return;
       if (content === lastSavedContent.current[tabToSave]) return;
-
       try {
         setIsSaving(true);
         const path = getFullFilePath(tabToSave);
@@ -155,9 +177,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             branch: selectedBranch,
           }),
         });
-
         lastSavedContent.current[tabToSave] = content;
-
         const shortName = path.split('/').pop() || path;
         setGitFileList((prev) => prev.filter((f) => f.fullPath !== path));
         setDraftList((prev) => {
@@ -183,33 +203,23 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
       saveDraftToDB(fileContent, activeTab);
     }
-
     activeFileContext.current = "";
     setFileContent("");
     setComponentValues({});
-
     setActiveTab(tabId);
   }, [activeTab, fileContent, saveDraftToDB]);
 
   const setSelectedFile = useCallback((fileName: string) => {
-    if (!fileName) {
-      handleSetActiveTab("");
-      return;
-    }
+    if (!fileName) { handleSetActiveTab(""); return; }
     if (fileName === activeTab) return;
-
     if (activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
       saveDraftToDB(fileContent, activeTab);
     }
-
     activeFileContext.current = "";
     setFileContent("");
     setComponentValues({});
-
     setOpenTabs((prev) => {
-      if (!prev.includes(fileName)) {
-        return [...prev, fileName];
-      }
+      if (!prev.includes(fileName)) return [...prev, fileName];
       return prev;
     });
     setActiveTab(fileName);
@@ -219,7 +229,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (tabIdToClose === activeTab && activeFileContext.current === activeTab && fileContent !== lastSavedContent.current[activeTab]) {
       saveDraftToDB(fileContent, activeTab);
     }
-
     setOpenTabs((prevTabs) => {
       const newTabs = prevTabs.filter((tab) => tab !== tabIdToClose);
       if (activeTab === tabIdToClose) {
@@ -242,9 +251,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  useEffect(() => {
-    if (categoriesData) setCategories(categoriesData);
-  }, [categoriesData]);
+  useEffect(() => { if (categoriesData) setCategories(categoriesData); }, [categoriesData]);
 
   const { data: authProvidersData } = useQuery({
     queryKey: ["auth-providers"],
@@ -257,22 +264,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!authProvidersData) return;
-    if (authProvidersData.includes("github")) {
-      setRepoProvider("github");
-      setSyntaxProvider("github");
-    } else if (authProvidersData.includes("gitlab")) {
-      setRepoProvider("gitlab");
-      setSyntaxProvider("gitlab");
-    }
+    if (authProvidersData.includes("github")) { setRepoProvider("github"); setSyntaxProvider("github"); }
+    else if (authProvidersData.includes("gitlab")) { setRepoProvider("gitlab"); setSyntaxProvider("gitlab"); }
   }, [authProvidersData]);
 
-  const {
-    data: reposResponse,
-    isLoading: isLoadingRepos,
-    isError: isErrorRepos,
-    error: errorRepos,
-    refetch: refetchRepos,
-  } = useQuery({
+  const { data: reposResponse, isLoading: isLoadingRepos, isError: isErrorRepos, error: errorRepos, refetch: refetchRepos } = useQuery({
     queryKey: ["repos", repoProvider],
     queryFn: async () => {
       if (!repoProvider) return { repos: [] as Repo[] };
@@ -288,17 +284,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const fetchRepos = useCallback(() => refetchRepos().then(() => undefined), [refetchRepos]);
 
   useEffect(() => {
-    if (isErrorRepos && errorRepos)
-      toast.error(errorRepos instanceof Error ? errorRepos.message : "Failed to load repositories");
+    if (isErrorRepos && errorRepos) toast.error(errorRepos instanceof Error ? errorRepos.message : "Failed to load repositories");
   }, [isErrorRepos, errorRepos]);
 
-  const {
-    data: availableBranchesData = [],
-    isLoading: isLoadingBranches,
-    isError: isErrorBranches,
-    error: errorBranches,
-    refetch: refetchBranches,
-  } = useQuery({
+  const { data: availableBranchesData = [], isLoading: isLoadingBranches, isError: isErrorBranches, error: errorBranches, refetch: refetchBranches } = useQuery({
     queryKey: ["branches", selectedRepo?.full_name, repoProvider],
     queryFn: async () => {
       if (!selectedRepo?.full_name || !repoProvider) return [];
@@ -310,78 +299,41 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     },
     enabled: !!selectedRepo?.full_name && !!repoProvider,
   });
-
   const availableBranches = availableBranchesData;
   useEffect(() => {
-    if (isErrorBranches && errorBranches)
-      toast.error(errorBranches instanceof Error ? errorBranches.message : "Failed to load branches");
+    if (isErrorBranches && errorBranches) toast.error(errorBranches instanceof Error ? errorBranches.message : "Failed to load branches");
   }, [isErrorBranches, errorBranches]);
 
   const fetchBranches = useCallback((_repoFullName: string) => refetchBranches().then(() => undefined), [refetchBranches]);
-
   const isLoading = isLoadingRepos || isLoadingBranches || isLoadingOther;
 
   useEffect(() => {
     if (typeof window === "undefined" || availableRepos.length === 0) return;
-
     const rYaml = sessionStorage.getItem("rollback_yaml");
     const rRepo = sessionStorage.getItem("rollback_repo");
     const rBranch = sessionStorage.getItem("rollback_branch");
     const rPath = sessionStorage.getItem("rollback_path");
-
     if (rYaml && rRepo && rPath) {
       const executeRollback = async () => {
         setIsRollingBack(true);
         isRollingBackRef.current = true;
-
         try {
           const targetRepo = availableRepos.find((r) => r.full_name === rRepo);
           if (!targetRepo) return;
-
-          await fetch("/api/pipeline/draft", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              repoFullName: targetRepo.full_name,
-              filePath: rPath,
-              content: rYaml,
-              uiState: { __syntax: targetRepo.provider || "github" },
-              branch: rBranch || "main",
-            }),
-          });
-
+          await fetch("/api/pipeline/draft", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: targetRepo.full_name, filePath: rPath, content: rYaml, uiState: { __syntax: targetRepo.provider || "github" }, branch: rBranch || "main" }) });
           rollbackCache.current[rPath] = rYaml;
-
           const isDifferentRepo = selectedRepo?.full_name !== targetRepo.full_name;
           setSelectedRepo(targetRepo);
           if (rBranch) setSelectedBranch(rBranch);
           if (targetRepo.provider) setSyntaxProvider(targetRepo.provider as "github" | "gitlab");
-
-          if (isDifferentRepo) {
-            setOpenTabs([rPath]);
-          } else {
-            setOpenTabs((prev) => prev.includes(rPath) ? prev : [...prev, rPath]);
-          }
-
+          if (isDifferentRepo) { setOpenTabs([rPath]); } else { setOpenTabs((prev) => prev.includes(rPath) ? prev : [...prev, rPath]); }
           setActiveTab(rPath);
           setForceReloadTrigger(Date.now());
-
-        } catch (error) {
-          console.error("Rollback failed:", error);
-        } finally {
-          sessionStorage.removeItem("rollback_yaml");
-          sessionStorage.removeItem("rollback_repo");
-          sessionStorage.removeItem("rollback_branch");
-          sessionStorage.removeItem("rollback_path");
-
-          setTimeout(() => {
-            setIsRollingBack(false);
-            isRollingBackRef.current = false;
-          }, 800);
+        } catch (error) { console.error("Rollback failed:", error); } finally {
+          sessionStorage.removeItem("rollback_yaml"); sessionStorage.removeItem("rollback_repo"); sessionStorage.removeItem("rollback_branch"); sessionStorage.removeItem("rollback_path");
+          setTimeout(() => { setIsRollingBack(false); isRollingBackRef.current = false; }, 800);
         }
       };
-
       executeRollback();
     }
   }, [availableRepos, pathname]);
@@ -390,85 +342,69 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (!selectedRepo || !selectedBranch || !repoProvider) return;
     setIsLoadingOther(true);
     try {
-      const syncRes = await fetch("/api/pipeline/sync", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          branch: selectedBranch,
-          provider: repoProvider,
-        }),
-      });
-      if (!syncRes.ok) {
-        setDraftList([]);
-        setGitFileList([]);
-        setFileList([]);
-        return;
-      }
-      const res = await fetch(
-        `/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}&t=${Date.now()}`,
-        { credentials: "include", cache: "no-store" },
-      );
+      const syncRes = await fetch("/api/pipeline/sync", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, branch: selectedBranch, provider: repoProvider }) });
+      if (!syncRes.ok) { setDraftList([]); setGitFileList([]); setFileList([]); return; }
+      const res = await fetch(`/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}&t=${Date.now()}`, { credentials: "include", cache: "no-store" });
       const data = await res.json();
-      setDraftList(data.drafts || []);
-      setGitFileList(data.gitFiles || []);
-      setFileList([...(data.drafts || []), ...(data.gitFiles || [])]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoadingOther(false);
-    }
+      setDraftList(data.drafts || []); setGitFileList(data.gitFiles || []); setFileList([...(data.drafts || []), ...(data.gitFiles || [])]);
+    } catch (e) { console.error(e); } finally { setIsLoadingOther(false); }
   }, [selectedRepo, selectedBranch, repoProvider]);
 
-  useEffect(() => {
-    refreshFileList();
-  }, [selectedRepo, selectedBranch, refreshFileList]);
+  useEffect(() => { refreshFileList(); }, [selectedRepo, selectedBranch, refreshFileList]);
 
   useEffect(() => {
     const currentRepo = selectedRepo?.full_name;
     const currentBranch = selectedBranch;
-
     if (currentRepo !== prevRepoRef.current || currentBranch !== prevBranchRef.current) {
       const isFirstLoad = prevRepoRef.current === undefined;
-      prevRepoRef.current = currentRepo;
-      prevBranchRef.current = currentBranch;
-
-      if (isRollingBackRef.current) {
-        return;
-      }
-
-      if (!isFirstLoad) {
-        setOpenTabs([]);
-        setActiveTab("");
-        setComponentValues({});
-      }
+      prevRepoRef.current = currentRepo; prevBranchRef.current = currentBranch;
+      if (isRollingBackRef.current) return;
+      if (!isFirstLoad) { setOpenTabs([]); setActiveTab(""); setComponentValues({}); }
     }
   }, [selectedRepo?.full_name, selectedBranch]);
 
   useEffect(() => {
     if (selectedRepo) {
       if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
+      resetDismissedSuggestions();
     }
-  }, [selectedRepo]);
+  }, [selectedRepo, resetDismissedSuggestions]);
 
   const setProvider = (newSyntax: "github" | "gitlab") => {
     if (newSyntax === syntaxProvider) return;
     setSyntaxProvider(newSyntax);
     isUpdatingFromUI.current = true;
     const nextValues = { ...componentValues };
-    categories.forEach((cat) => {
-      cat.components.forEach((comp) => {
-        comp.uiConfig?.fields?.forEach((field) => {
-          if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax];
-        });
-      });
-    });
+    categories.forEach((cat) => { cat.components.forEach((comp) => { comp.uiConfig?.fields?.forEach((field) => { if (field.platformDefaults?.[newSyntax]) nextValues[field.id] = field.platformDefaults[newSyntax]; }); }); });
     setComponentValues(nextValues);
-
     setFileContent(generateYamlFromValues(categories, nextValues, newSyntax, ""));
   };
 
+  // ===== applyMultipleValues: set หลาย field พร้อมกัน gen YAML ครั้งเดียว =====
+  const applyMultipleValues = useCallback((config: Record<string, string | number | boolean | string[] | undefined>) => {
+    let nextValues = { ...componentValues, ...config };
+    Object.entries(config).forEach(([fieldId, finalValue]) => {
+      if (finalValue !== undefined && finalValue !== null) {
+        const lookupKey = String(finalValue);
+        categories.forEach(cat =>
+          cat.components.forEach((comp: any) => {
+            const field = (comp.uiConfig?.fields || []).find((f: any) => f.id === fieldId);
+            if (field?.linkedFields) {
+              Object.entries(field.linkedFields).forEach(([targetId, mapping]: [string, any]) => {
+                const newVal = mapping[lookupKey];
+                if (newVal) nextValues[targetId] = newVal;
+              });
+            }
+          })
+        );
+      }
+    });
+    setComponentValues(nextValues);
+    isUpdatingFromUI.current = true;
+    setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, ""));
+  }, [componentValues, categories, syntaxProvider]);
+
+  // ===== updateComponentValue: set 1 field =====
   const updateComponentValue = (id: string, value: string | number | boolean | string[] | undefined) => {
     const defaultBranch = selectedRepo?.default_branch || "main";
     let finalValue = value;
@@ -507,126 +443,56 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (isUpdatingFromUI.current) {
-      isUpdatingFromUI.current = false;
-      return;
-    }
-
-    if (!fileContent.trim()) {
-      if (categories.length > 0) setComponentValues({});
-      return;
-    }
-
+    if (isUpdatingFromUI.current) { isUpdatingFromUI.current = false; return; }
+    if (!fileContent.trim()) { if (categories.length > 0) setComponentValues({}); return; }
     if (categories.length === 0) return;
-
     const parseTimer = setTimeout(() => {
       try {
         const { detectedSyntax, newValues } = parseYamlToUI(fileContent, categories, syntaxProvider);
-
-        if (detectedSyntax !== syntaxProvider) {
-          setSyntaxProvider(detectedSyntax as "github" | "gitlab");
-        }
-
-        // ทับด้วยค่าใหม่ 100% (ลบของเก่าทิ้ง โค้ดฝั่งขวาจะได้เป็น Source of Truth จริงๆ)
+        if (detectedSyntax !== syntaxProvider) setSyntaxProvider(detectedSyntax as "github" | "gitlab");
         setComponentValues(newValues);
-      } catch (e) {
-        // แอบทำงานเงียบๆ เผื่อผู้ใช้กำลังพิมพ์โค้ดยังไม่เสร็จ
-      }
+      } catch (e) { /* silent */ }
     }, 500);
-
     return () => clearTimeout(parseTimer);
   }, [fileContent, categories, syntaxProvider]);
 
   useEffect(() => {
     let ignore = false;
-
     if (!selectedRepo?.full_name || !activeTab || !repoProvider) {
-      if (!activeTab) {
-        setFileContent("");
-        setOriginalContent("");
-        activeFileContext.current = "";
-      }
+      if (!activeTab) { setFileContent(""); setOriginalContent(""); activeFileContext.current = ""; }
       return;
     }
-
-    if (isRenamingRef.current) {
-      isRenamingRef.current = false;
-      return;
-    }
-
+    if (isRenamingRef.current) { isRenamingRef.current = false; return; }
     if (rollbackCache.current[activeTab]) {
-      const rYaml = rollbackCache.current[activeTab];
-      delete rollbackCache.current[activeTab];
-
-      activeFileContext.current = activeTab;
-      setFileContent(rYaml);
-      setComponentValues({});
-      lastSavedContent.current[activeTab] = rYaml;
-      return;
+      const rYaml = rollbackCache.current[activeTab]; delete rollbackCache.current[activeTab];
+      activeFileContext.current = activeTab; setFileContent(rYaml); setComponentValues({}); lastSavedContent.current[activeTab] = rYaml; return;
     }
-
-    if (activeFileContext.current !== activeTab) {
-      activeFileContext.current = "";
-      setFileContent("");
-      setComponentValues({});
-    }
+    if (activeFileContext.current !== activeTab) { activeFileContext.current = ""; setFileContent(""); setComponentValues({}); }
 
     const loadContent = async () => {
       let finalContent = "";
       try {
         const path = getFullFilePath(activeTab);
-        const params = new URLSearchParams({
-          repoFullName: selectedRepo.full_name,
-          branch: selectedBranch,
-          filePath: path,
-        });
+        const params = new URLSearchParams({ repoFullName: selectedRepo.full_name, branch: selectedBranch, filePath: path });
         const cacheBuster = `&t=${Date.now()}`;
-
         let dataGit = { content: "" };
-        try {
-          const resGit = await fetch(`/api/pipeline/read?${params.toString()}${cacheBuster}`, {
-            credentials: "include", cache: "no-store",
-          });
-          if (resGit.ok) dataGit = await resGit.json();
-        } catch (e) { }
-
+        try { const resGit = await fetch(`/api/pipeline/read?${params.toString()}${cacheBuster}`, { credentials: "include", cache: "no-store" }); if (resGit.ok) dataGit = await resGit.json(); } catch (e) { }
         if (ignore) return;
         setOriginalContent(dataGit.content || "");
-
         let dataDraft = { content: "", uiState: null };
-        try {
-          const resDraft = await fetch(
-            `/api/pipeline/draft?${params.toString()}${cacheBuster}`,
-            { credentials: "include", cache: "no-store", }
-          );
-          if (resDraft.ok) dataDraft = await resDraft.json();
-        } catch (e) { }
-
+        try { const resDraft = await fetch(`/api/pipeline/draft?${params.toString()}${cacheBuster}`, { credentials: "include", cache: "no-store" }); if (resDraft.ok) dataDraft = await resDraft.json(); } catch (e) { }
         if (ignore) return;
-
         if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {
           finalContent = dataDraft.content;
-          if (dataDraft.uiState) {
-            setComponentValues(dataDraft.uiState);
-            if (dataDraft.uiState.__syntax) setSyntaxProvider(dataDraft.uiState.__syntax);
-          }
+          if (dataDraft.uiState) { setComponentValues(dataDraft.uiState); if (dataDraft.uiState.__syntax) setSyntaxProvider(dataDraft.uiState.__syntax); }
         } else {
-          finalContent = dataGit.content || "";
-          setComponentValues({});
+          finalContent = dataGit.content || ""; setComponentValues({});
           if (selectedRepo.provider) setSyntaxProvider(selectedRepo.provider as "github" | "gitlab");
         }
-
-      } catch (e) {
-        console.error("Critical error in loadContent:", e);
-      } finally {
-        if (!ignore) {
-          lastSavedContent.current[activeTab] = finalContent;
-          activeFileContext.current = activeTab;
-          setFileContent(finalContent);
-        }
+      } catch (e) { console.error("Critical error in loadContent:", e); } finally {
+        if (!ignore) { lastSavedContent.current[activeTab] = finalContent; activeFileContext.current = activeTab; setFileContent(finalContent); }
       }
     };
-
     loadContent();
     return () => { ignore = true; };
   }, [selectedRepo?.full_name, selectedBranch, activeTab, forceReloadTrigger]);
@@ -634,7 +500,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!selectedRepo || !activeTab) return;
     if (activeFileContext.current !== activeTab) return;
-
     const timer = setTimeout(() => saveDraftToDB(fileContent, activeTab), 2000);
     return () => clearTimeout(timer);
   }, [fileContent, selectedRepo, saveDraftToDB, activeTab]);
@@ -642,117 +507,39 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const renameCurrentFile = async (newName: string) => {
     if (!selectedRepo || !newName || !activeTab) return;
     isRenamingRef.current = true;
-
-    const oldFilePath = getFullFilePath(activeTab);
-    const newFilePath = getFullFilePath(newName);
-
-    setOpenTabs((prev) => prev.map(tab => tab === activeTab ? newFilePath : tab));
-    setActiveTab(newFilePath);
-
+    const oldFilePath = getFullFilePath(activeTab); const newFilePath = getFullFilePath(newName);
+    setOpenTabs((prev) => prev.map(tab => tab === activeTab ? newFilePath : tab)); setActiveTab(newFilePath);
     const safeContent = activeFileContext.current === activeTab ? fileContent : "";
-
-    lastSavedContent.current[newFilePath] = safeContent;
-    activeFileContext.current = newFilePath;
-
+    lastSavedContent.current[newFilePath] = safeContent; activeFileContext.current = newFilePath;
     try {
       setIsSaving(true);
-      await fetch("/api/pipeline/draft", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          filePath: newFilePath,
-          content: safeContent,
-          uiState: { ...componentValuesRef.current, __syntax: syntaxProviderRef.current },
-          branch: selectedBranch,
-        }),
-      });
-
-      if (oldFilePath !== newFilePath) {
-        await fetch("/api/pipeline/draft", {
-          method: "DELETE",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repoFullName: selectedRepo.full_name,
-            filePath: oldFilePath,
-            branch: selectedBranch,
-          }),
-        });
-      }
+      await fetch("/api/pipeline/draft", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: newFilePath, content: safeContent, uiState: { ...componentValuesRef.current, __syntax: syntaxProviderRef.current }, branch: selectedBranch }) });
+      if (oldFilePath !== newFilePath) { await fetch("/api/pipeline/draft", { method: "DELETE", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: oldFilePath, branch: selectedBranch }) }); }
       await refreshFileList();
-
-    } catch (e) {
-      console.error("Rename failed:", e);
-    } finally {
-      isRenamingRef.current = false;
-      setIsSaving(false);
-    }
+    } catch (e) { console.error("Rename failed:", e); } finally { isRenamingRef.current = false; setIsSaving(false); }
   };
 
   const commitFile = async (message: string) => {
     if (!selectedRepo || !activeTab || !repoProvider) return false;
     try {
       setIsSaving(true);
-      const res = await fetch("/api/pipeline/commit", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          filePath: getFullFilePath(activeTab),
-          content: fileContent,
-          message,
-          branch: selectedBranch,
-          provider: repoProvider,
-        }),
-      });
-      if (res.ok) {
-        await refreshFileList();
-        return true;
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
+      const res = await fetch("/api/pipeline/commit", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(activeTab), content: fileContent, message, branch: selectedBranch, provider: repoProvider }) });
+      if (res.ok) { await refreshFileList(); return true; }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
     return false;
   };
 
   const discardDraft = async () => {
     if (!selectedRepo || !activeTab || !confirm(`Discard draft for this file?`)) return false;
     try {
-      setIsSaving(true);
-      const tabToClose = activeTab;
-      const res = await fetch("/api/pipeline/draft", {
-        method: "DELETE",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoFullName: selectedRepo.full_name,
-          filePath: getFullFilePath(tabToClose),
-          branch: selectedBranch,
-        }),
-      });
-      if (res.ok) {
-        activeFileContext.current = "";
-        setFileContent("");
-        delete lastSavedContent.current[tabToClose];
-
-        closeTab(tabToClose);
-        refreshFileList();
-        return true;
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
+      setIsSaving(true); const tabToClose = activeTab;
+      const res = await fetch("/api/pipeline/draft", { method: "DELETE", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(tabToClose), branch: selectedBranch }) });
+      if (res.ok) { activeFileContext.current = ""; setFileContent(""); delete lastSavedContent.current[tabToClose]; closeTab(tabToClose); refreshFileList(); return true; }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
     return false;
   };
 
-  const autoSetup = async () => {
+    const autoSetup = async () => {
     if (!selectedRepo || !repoProvider) return;
     setIsAnalyzing(true);
     try {
@@ -763,41 +550,38 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ repoFullName: selectedRepo.full_name, branch: selectedBranch, provider: repoProvider }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error((data as { error?: string })?.error || "Auto setup failed.");
-        return;
-      }
+      if (!res.ok) { toast.error((data as { error?: string })?.error || "Auto setup failed."); return; }
+
       if (data.config) {
         const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
 
-        let newValues = { ...componentValues, ...data.config };
+        // รวม config + platformDefaults
+        let configWithDefaults = { ...data.config };
         categories.forEach((cat) =>
           cat.components.forEach((comp) =>
             comp.uiConfig?.fields?.forEach((field) => {
               if (field.platformDefaults?.[repoProvider])
-                newValues[field.id] = field.platformDefaults[repoProvider];
+                configWithDefaults[field.id] = field.platformDefaults[repoProvider];
             }),
           ),
         );
 
-        setComponentValues(newValues);
-        isUpdatingFromUI.current = true;
+        // ใช้ applyMultipleValues → resolve linkedFields + gen YAML ครั้งเดียว
+        applyMultipleValues(configWithDefaults);
 
-        const generated = generateYamlFromValues(categories, newValues, syntaxProvider, "");
-
-        // 1. สั่งเปิด Tab และย้ายไปที่ไฟล์เป้าหมายทันที
+        // เปิด tab + save draft
         if (activeTab !== targetFileName) {
           setOpenTabs((prev) => prev.includes(targetFileName) ? prev : [...prev, targetFileName]);
           setActiveTab(targetFileName);
         }
-
-        // 2. แสดงโค้ดลงหน้าจอฝั่งขวา
-        setFileContent(generated);
         activeFileContext.current = targetFileName;
 
-        // 🔥 3. THE FIX: บังคับยิง API เพื่อเซฟลง Database ทันที! (ไม่รอ Auto-save)
-        lastSavedContent.current[targetFileName] = ""; // เคลียร์ตัวหลอกทิ้งก่อน
-        await saveDraftToDB(generated, targetFileName); // ยัดลง DB ตรงๆ เลย
+        // รอให้ state update แล้ว save
+        setTimeout(async () => {
+          const generated = generateYamlFromValues(categories, { ...componentValues, ...configWithDefaults }, syntaxProvider, "");
+          lastSavedContent.current[targetFileName] = "";
+          await saveDraftToDB(generated, targetFileName);
+        }, 500);
 
         const detected: string[] = [];
         if (data.config.use_node) detected.push("Node.js");
@@ -819,47 +603,20 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       value={{
         language: syntaxProvider,
         setLanguage: (lang: string) => setProvider(lang as "github" | "gitlab"),
-        provider: syntaxProvider,
-        setProvider,
-        availableRepos,
-        fetchRepos,
-        selectedRepo,
-        setSelectedRepo,
-        selectedBranch,
-        setSelectedBranch,
-        fetchBranches,
-        availableBranches,
-        fileContent,
-        setFileContent,
-        openTabs,
-        setOpenTabs,
-        activeTab,
-        setActiveTab: handleSetActiveTab,
-        closeTab,
-        selectedFile: activeTab,
-        setSelectedFile,
-        fileList,
-        draftList,
-        gitFileList,
-        originalContent,
-        isSaving,
-        isLoading,
-        isAnalyzing,
-        isRollingBack,
-        renameCurrentFile,
-        commitFile,
-        discardDraft,
-        categories,
-        componentValues,
-        updateComponentValue,
+        provider: syntaxProvider, setProvider,
+        availableRepos, fetchRepos, selectedRepo, setSelectedRepo,
+        selectedBranch, setSelectedBranch, fetchBranches, availableBranches,
+        fileContent, setFileContent,
+        openTabs, setOpenTabs, activeTab, setActiveTab: handleSetActiveTab, closeTab,
+        selectedFile: activeTab, setSelectedFile,
+        fileList, draftList, gitFileList, originalContent,
+        isSaving, isLoading, isAnalyzing, isRollingBack,
+        renameCurrentFile, commitFile, discardDraft,
+        categories, componentValues, updateComponentValue, applyMultipleValues,
         autoSetup,
-        isCollapsed,
-        setIsCollapsed,
-        categoriesOpen,
-        setCategoriesOpen,
-        sectionsOpen,
-        setSectionsOpen,
-        navigateToBlock,
+        isCollapsed, setIsCollapsed, categoriesOpen, setCategoriesOpen, sectionsOpen, setSectionsOpen,
+        navigateToBlock, scrollTarget, setScrollTarget,
+        dismissedSuggestions, dismissSuggestion, resetDismissedSuggestions,
       }}
     >
       {children}
