@@ -41,8 +41,28 @@ export default function HistoryPage() {
   const [selectedYaml, setSelectedYaml] = useState<HistoryRecord | null>(null);
   const router = useRouter();
 
-  // 🔥 1. ดึงข้อมูล Dropdown (Repo และ Branch ที่มีประวัติ)
-  const { data: filterData } = useQuery({
+  // 🔥 1. ดึง repos ที่ user มี access จริง
+  const { data: accessibleRepos } = useQuery({
+    queryKey: ["accessible-repos"],
+    queryFn: async () => {
+      // ลองดึง GitHub ก่อน
+      const ghRes = await fetch("/api/github/repos", { credentials: "include" });
+      if (ghRes.ok) {
+        const ghData = await ghRes.json();
+        return (ghData.repos || []).map((r: any) => r.full_name) as string[];
+      }
+      // ถ้า GitHub ไม่ได้ ลอง GitLab
+      const glRes = await fetch("/api/gitlab/repos", { credentials: "include" });
+      if (glRes.ok) {
+        const glData = await glRes.json();
+        return (glData.repos || []).map((r: any) => r.full_name) as string[];
+      }
+      return [] as string[];
+    },
+  });
+
+  // 🔥 2. ดึงข้อมูล Dropdown (Repo และ Branch ที่มีประวัติ)
+  const { data: rawFilterData } = useQuery({
     queryKey: ["pipeline-history-filters"],
     queryFn: async () => {
       const res = await fetch("/api/pipeline/history/filters");
@@ -51,6 +71,18 @@ export default function HistoryPage() {
       return json.filters as Record<string, string[]>;
     },
   });
+
+  // 🔥 3. filter เฉพาะ repo ที่มี access จริง
+  const filterData = React.useMemo(() => {
+    if (!rawFilterData || !accessibleRepos) return rawFilterData;
+    const filtered: Record<string, string[]> = {};
+    for (const [repo, branches] of Object.entries(rawFilterData)) {
+      if (accessibleRepos.includes(repo)) {
+        filtered[repo] = branches;
+      }
+    }
+    return filtered;
+  }, [rawFilterData, accessibleRepos]);
 
   // ดึงข้อมูลจาก API ที่เราเพิ่งสร้าง
   const { data, isLoading, isError } = useQuery({
@@ -68,7 +100,11 @@ export default function HistoryPage() {
     },
   });
 
-  const history = data?.history || [];
+  const history = React.useMemo(() => {
+    const raw = data?.history || [];
+    if (!accessibleRepos || accessibleRepos.length === 0) return raw;
+    return raw.filter((record) => accessibleRepos.includes(record.repoFullName));
+  }, [data, accessibleRepos]);
 
   return (
     <div className="h-screen bg-gradient-to-b from-[#010819] to-[#02184B]/85 text-slate-200 p-6 font-sans flex flex-col overflow-hidden">

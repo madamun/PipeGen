@@ -15,6 +15,7 @@ type Body = {
   message: string;
   path: string; // e.g. ".gitlab-ci.yml"
   content: string; // file content (YAML string)
+
 };
 
 const VALID_BRANCH_REGEX = /^[a-zA-Z0-9/_.-]+$/;
@@ -214,34 +215,23 @@ export async function POST(req: NextRequest) {
           yamlContent: content,
         },
       });
-      console.log("✅ [GitLab] Pipeline History saved successfully!");
     } catch (dbError) {
-      console.error("❌ [GitLab] Failed to save Pipeline History:", dbError);
-      //
+      console.error("[GitLab] Failed to save Pipeline History:", dbError);
+      
     }
-    // ลบ draft ที่ค้างอยู่หลัง commit สำเร็จ
-    // หมายเหตุ: ในโหมด PR (pull_request) เรา edit ที่ baseBranch ดังนั้นให้ลบ draft ของ baseBranch
-    const draftBranch = mode === "push" ? finalTargetBranch : baseBranch;
     try {
-      const repo = await prisma.repository.findFirst({
-        where: { fullName: full_name, userId: userId, provider: "gitlab" },
-        select: { id: true },
+      await prisma.pipelineDraft.deleteMany({
+        where: {
+          pipeline: {
+            filePath: path,
+            repository: {
+              fullName: full_name,
+            },
+          },
+        },
       });
-
-      if (repo) {
-        const pipeline = await prisma.pipeline.findFirst({
-          where: { repoId: repo.id, filePath: path, branch: draftBranch },
-          select: { id: true },
-        });
-
-        if (pipeline) {
-          await prisma.pipelineDraft.deleteMany({
-            where: { pipelineId: pipeline.id },
-          });
-        }
-      }
     } catch (e) {
-      console.error("❌ [GitLab] Failed to delete PipelineDraft:", e);
+
     }
 
     return Response.json({ ok: true, html_url });

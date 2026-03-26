@@ -1,3 +1,4 @@
+// app/api/pipeline/history/filters/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../packages/server/prisma";
 import { auth } from "../../../../../packages/server/auth";
@@ -11,11 +12,46 @@ export async function GET(req: NextRequest) {
 
     const userId = session.user.id;
 
-    // 1. ดึงชื่อ Repo ทั้งหมดที่ User คนนี้เชื่อมต่อไว้
-    const repos = await prisma.repository.findMany({
-      where: { userId: userId },
-      select: { fullName: true },
+    // 1. ดึง Repo ที่ user มี access จริงจาก Provider API
+    const accounts = await prisma.account.findMany({
+      where: { userId },
+      select: { providerId: true, accessToken: true },
     });
+
+    const accessibleRepos = new Set<string>();
+
+    for (const acc of accounts) {
+      if (!acc.accessToken) continue;
+      try {
+        if (acc.providerId === "github") {
+          const res = await fetch("https://api.github.com/installation/repositories?per_page=100", {
+            headers: { Authorization: `Bearer ${acc.accessToken}`, Accept: "application/vnd.github+json" },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            (data.repositories || []).forEach((r: any) => accessibleRepos.add(r.full_name));
+          }
+        } else if (acc.providerId === "gitlab") {
+          // GitLab: ดึงจาก allowedGitlabRepos ใน DB
+          const allowedRepos = await prisma.repository.findMany({
+            where: { userId, provider: "gitlab" },
+            select: { fullName: true },
+          });
+          allowedRepos.forEach((r) => accessibleRepos.add(r.fullName));
+        }
+      } catch (e) {
+        console.error(`Failed to fetch repos from ${acc.providerId}:`, e);
+      }
+    }
+
+    // fallback: ถ้า API fail ใช้ Repository table แทน
+    if (accessibleRepos.size === 0) {
+      const repos = await prisma.repository.findMany({
+        where: { userId },
+        select: { fullName: true },
+      });
+      repos.forEach((r) => accessibleRepos.add(r.fullName));
+    }
 
     // 2. ดึงชื่อ Branch ที่เคยมีประวัติการทำรายการ
     const historyBranches = await prisma.pipelineHistory.findMany({
@@ -27,17 +63,14 @@ export async function GET(req: NextRequest) {
     // 3. ประกอบร่างข้อมูล 
     const filters: Record<string, string[]> = {};
 
-    // ตั้งต้นโครงสร้างด้วย Repo ทั้งหมดของ User
-    for (const r of repos) {
-      filters[r.fullName] = [];
+    // ตั้งต้นโครงสร้างด้วย Repo ที่ user มี access จริง
+    for (const repoName of accessibleRepos) {
+      filters[repoName] = [];
     }
 
     // เอา Branch ไปหย่อนใส่ Repo ที่ตรงกัน
     for (const hb of historyBranches) {
-      // เผื่อกรณีที่ Repo โดนลบไปแล้ว แต่ประวัติ History ยังอยู่
-      if (!filters[hb.repoFullName]) {
-        filters[hb.repoFullName] = [];
-      }
+      if (!filters[hb.repoFullName]) continue;  // skip repo ที่ไม่มี access แล้ว
       if (hb.branch && !filters[hb.repoFullName].includes(hb.branch)) {
         filters[hb.repoFullName].push(hb.branch);
       }

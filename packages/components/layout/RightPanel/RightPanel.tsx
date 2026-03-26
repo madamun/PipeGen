@@ -255,55 +255,63 @@ function EditorHeader({
             const shortName = getShortName(tab);
 
             return (
-              <div
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                title={tab}
-                className={`group flex items-center gap-2 px-3 h-[calc(100%+1px)] min-w-[130px] max-w-[220px] cursor-pointer relative
-                  ${isActive
-                    ? 'bg-[#010819] text-blue-50 border-t-2 border-t-blue-500 border-x border-white/10 border-b border-b-[#010819] z-10'
-                    : 'bg-transparent text-slate-400 hover:bg-white/5 hover:text-slate-200 border-t-2 border-t-transparent border-l border-transparent border-r border-white/10 border-b border-transparent z-0'
-                  }
-                `}
-              >
-                <span className={`inline-block h-2 w-2 rounded-full shrink-0 transition-colors ${isDraft ? (isActive ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-amber-600/70") : "bg-slate-600"}`} />
-
-                {isActive && isEditing ? (
-                  <input
-                    ref={inputRef}
-                    value={tempName}
-                    onChange={(e) => setTempName(e.target.value)}
-                    onBlur={saveName}
-                    onKeyDown={handleKeyDown}
-                    placeholder="name..."
-                    className="bg-transparent text-white border-b border-blue-500 outline-none w-full h-4 text-[13px] leading-none"
-                  />
-                ) : (
-                  <span
-                    className="truncate flex-1 text-[13px] tracking-wide"
-                    onDoubleClick={(e) => {
-                      if (isActive && provider !== "gitlab") {
-                        e.stopPropagation();
-                        startRenaming();
+              <Tooltip key={tab}>
+                <TooltipTrigger asChild>
+                  <div
+                    onClick={() => setActiveTab(tab)}
+                    className={`group flex items-center gap-2 px-3 h-[calc(100%+1px)] min-w-[130px] max-w-[220px] cursor-pointer relative
+                      ${isActive
+                        ? 'bg-[#010819] text-blue-50 border-t-2 border-t-blue-500 border-x border-white/10 border-b border-b-[#010819] z-10'
+                        : 'bg-transparent text-slate-400 hover:bg-white/5 hover:text-slate-200 border-t-2 border-t-transparent border-l border-transparent border-r border-white/10 border-b border-transparent z-0'
                       }
-                    }}
+                    `}
                   >
-                    {shortName}
-                  </span>
-                )}
+                    <span className={`inline-block h-2 w-2 rounded-full shrink-0 transition-colors ${isDraft ? (isActive ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-amber-600/70") : "bg-slate-600"}`} />
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab);
-                  }}
-                  className={`p-0.5 rounded-md transition-all shrink-0 ml-auto
-                    ${isActive ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-white'}
-                  `}
+                    {isActive && isEditing ? (
+                      <input
+                        ref={inputRef}
+                        value={tempName}
+                        onChange={(e) => setTempName(e.target.value)}
+                        onBlur={saveName}
+                        onKeyDown={handleKeyDown}
+                        placeholder="name..."
+                        className="bg-transparent text-white border-b border-blue-500 outline-none w-full h-4 text-[13px] leading-none"
+                      />
+                    ) : (
+                      <span
+                        className="truncate flex-1 text-[13px] tracking-wide"
+                        onDoubleClick={(e) => {
+                          if (isActive && provider !== "gitlab") {
+                            e.stopPropagation();
+                            startRenaming();
+                          }
+                        }}
+                      >
+                        {shortName}
+                      </span>
+                    )}
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab);
+                      }}
+                      className={`p-0.5 rounded-md transition-all shrink-0 ml-auto
+                        ${isActive ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-white'}
+                      `}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
+                  {tab}
+                </TooltipContent>
+              </Tooltip>
             );
           })}
         </div>

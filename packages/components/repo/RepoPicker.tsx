@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -130,13 +131,13 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
               <TabsList className="h-10 gap-2 bg-transparent p-0">
                 <TabsTrigger
                   value="my"
-                  className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+                  className="text-white/60 rounded-xl px-4 py-2 text-base border border-transparent data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:border-white/30 hover:text-white hover:bg-white/5 transition-all"
                 >
                   My Projects
                 </TabsTrigger>
                 <TabsTrigger
                   value="co"
-                  className="text-white rounded-xl px-4 py-2 text-base data-[state=active]:bg-white/15 transition-all"
+                  className="text-white/60 rounded-xl px-4 py-2 text-base border border-transparent data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:border-white/30 hover:text-white hover:bg-white/5 transition-all"
                 >
                   Co-Projects
                 </TabsTrigger>
@@ -144,25 +145,34 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
 
               {/* กลุ่มปุ่ม Action ฝั่งขวา (Manage & Refresh) */}
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
-                  onClick={handleManageRepos}
-                  title="Manage repository access"
-                >
-                  {provider === "github" ? (
-                    <Github className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Gitlab className="mr-2 h-4 w-4" />
-                  )}
-                  Manage Access
-                </Button>
+<Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors hover:text-color-white"
+                      onClick={handleManageRepos}
+                    >
+                      {provider === "github" ? (
+                        <Github className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Gitlab className="mr-2 h-4 w-4" />
+                      )}
+                      Manage Access
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    className="bg-[#111d35] text-slate-200 border-white/20 text-[11px] px-2 py-2 mt-1 leading-none font-medium tracking-wide"
+                  >
+                    Manage repository access
+                  </TooltipContent>
+                </Tooltip>
 
                 <Button
                   size="sm"
                   variant="outline"
-                  className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors"
+                  className="bg-transparent border-white/30 hover:bg-white/10 text-slate-200 transition-colors hover:text-color-white"
                   onClick={() => refetch()}
                   disabled={loading || isFetching}
                 >

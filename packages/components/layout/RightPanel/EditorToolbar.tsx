@@ -151,9 +151,11 @@ export default function EditorToolbar({
               <button
                 onClick={onOpenAIPanel}
                 aria-label="Open AI Assistant"
-                className="h-8 px-3 flex items-center justify-center rounded-lg bg-[#010819] border border-white/20 text-slate-400 hover:text-white hover:bg-[#111d35] transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
+                className="h-8 px-3 flex items-center gap-1.5 justify-center rounded-lg bg-[#010819] border border-white/20 text-slate-400 hover:text-white hover:bg-[#111d35] transition outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#010819]"
               >
                 <MessageCircle className="w-4 h-4" />
+                <span className="text-xs font-medium">AI</span>
+                
               </button>
             </TooltipTrigger>
             <TooltipContent
