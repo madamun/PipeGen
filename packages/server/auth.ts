@@ -2,8 +2,29 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "./prisma";
 
+const baseURL =
+  process.env.BETTER_AUTH_URL ||
+  process.env.AUTH_URL ||
+  (process.env.BETTER_AUTH_URL ? `https://${process.env.BETTER_AUTH_URL}` : "http://localhost:3000");
+
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      baseURL,
+      process.env.BETTER_AUTH_URL,
+      process.env.AUTH_URL,
+      process.env.NEXT_PUBLIC_APP_URL,
+      process.env.BETTER_AUTH_URL ? `https://${process.env.BETTER_AUTH_URL}` : undefined,
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ].filter(Boolean) as string[],
+  ),
+);
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  baseURL,
+  trustedOrigins,
 
   socialProviders: {
     github: {
@@ -19,7 +40,7 @@ export const auth = betterAuth({
   },
 
   cookie: {
-    secure: false,
+    secure: baseURL.startsWith("https://"),
     sameSite: "Lax",
   },
 
