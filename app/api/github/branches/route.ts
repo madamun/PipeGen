@@ -1,4 +1,4 @@
-// src/app/api/github/branches/route.ts
+// app/api/github/branches/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";

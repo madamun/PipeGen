@@ -148,8 +148,8 @@ export async function analyzeRepo(
           config.run_build = true;
           config.build_cmd = `${config.pkg_manager} run build`;
         }
+        // lint ไม่เปิดตรงนี้ → ไปเช็ค eslint config ใน section 6 แทน
         if (scripts.lint) {
-          config.check_quality = true;
           config.lint_cmd = `${config.pkg_manager} run lint`;
         }
       }
@@ -195,16 +195,19 @@ export async function analyzeRepo(
     config.use_rust = true;
   }
 
-  // 6. Lint
+  // 6. Lint — เปิดเฉพาะเมื่อมี eslint config + lint script
   if (packageJsonRaw) {
     const hasEslint =
       (await fetchFile(".eslintrc.js")) ||
       (await fetchFile(".eslintrc.json")) ||
       (await fetchFile("eslint.config.js")) ||
-      (await fetchFile("eslint.config.mjs"));
-    if (hasEslint) {
+      (await fetchFile("eslint.config.mjs")) ||
+      (await fetchFile("eslint.config.cjs"));
+    if (hasEslint && config.lint_cmd) {
       config.check_quality = true;
-      config.lint_cmd = `${config.pkg_manager || "npm"} run lint`;
+    } else {
+      config.check_quality = false;
+      config.lint_cmd = undefined;
     }
   }
 

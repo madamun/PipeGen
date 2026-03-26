@@ -136,9 +136,9 @@ export default function CommitDialog(props: Props) {
         setTimeout(() => {
           setStep("form");
           setBranchDropdownOpen(false);
-          setTitle(""); 
-          setMessage(""); 
-        }, 300); 
+          setTitle("");
+          setMessage("");
+        }, 300);
       }
       setOpen(next);
     },
@@ -186,12 +186,13 @@ export default function CommitDialog(props: Props) {
       }
 
       const url = data?.html_url as string | undefined;
-      if (url) window.open(url, "_blank");
 
       const successMsg =
         mode === "pull_request" ? "Pull request created" : "Changes pushed";
+
       toast.success(successMsg, {
         description: url ? "Open in new tab to view." : undefined,
+        duration: Infinity,
         action: url
           ? { label: "Open", onClick: () => window.open(url, "_blank") }
           : undefined,
@@ -267,7 +268,7 @@ export default function CommitDialog(props: Props) {
                 />
                 <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
                   <PopoverTrigger asChild>
-                    <button 
+                    <button
                       type="button"
                       disabled={loadingBranches || branchNames.length === 0}
                       className="flex items-center justify-center px-2 border-l border-white/20 text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"

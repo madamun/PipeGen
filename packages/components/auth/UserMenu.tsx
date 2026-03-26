@@ -52,7 +52,10 @@ export default function UserMenu() {
       .catch(() => setProvider("github"));
   }, [user]);
 
-  if (!data?.session || !user) return null;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted || !data?.session || !user) return null;
 
   const handleCopyId = () => {
     if (user?.id) {

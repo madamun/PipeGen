@@ -1,3 +1,4 @@
+// app/api/pipeline/history/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../packages/server/prisma";
 import { auth } from "../../../../packages/server/auth";

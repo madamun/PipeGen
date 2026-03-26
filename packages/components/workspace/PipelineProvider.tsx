@@ -570,22 +570,25 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           ),
         );
 
-        // ใช้ applyMultipleValues → resolve linkedFields + gen YAML ครั้งเดียว
-        applyMultipleValues(configWithDefaults);
+        // gen YAML ก่อน
+        const generated = generateYamlFromValues(categories, { ...componentValuesRef.current, ...configWithDefaults }, syntaxProvider, "");
 
-        // เปิด tab + save draft
-        if (activeTab !== targetFileName) {
-          setOpenTabs((prev) => prev.includes(targetFileName) ? prev : [...prev, targetFileName]);
-          setActiveTab(targetFileName);
+        // save draft FIRST (ก่อน switch tab เพื่อให้ loadContent เจอ)
+        const fullPath = getFullFilePath(targetFileName);
+        const existingTab = openTabs.find((t) => t === targetFileName || t === fullPath || getFullFilePath(t) === fullPath);
+        const tabToUse = existingTab || fullPath;
+
+        activeFileContext.current = tabToUse;
+        lastSavedContent.current[tabToUse] = "";
+        await saveDraftToDB(generated, tabToUse);
+
+        // เปิด tab (loadContent จะเจอ draft แล้ว)
+        if (activeTab !== tabToUse) {
+          setOpenTabs((prev) => prev.includes(tabToUse) ? prev : [...prev, tabToUse]);
+          setActiveTab(tabToUse);
         }
-        activeFileContext.current = targetFileName;
-
-        // รอให้ state update แล้ว save
-        setTimeout(async () => {
-          const generated = generateYamlFromValues(categories, { ...componentValues, ...configWithDefaults }, syntaxProvider, "");
-          lastSavedContent.current[targetFileName] = "";
-          await saveDraftToDB(generated, targetFileName);
-        }, 500);
+        // set UI state
+        applyMultipleValues(configWithDefaults);
 
         const detected: string[] = [];
         if (data.config.use_node) detected.push("Node.js");
@@ -593,7 +596,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         if (data.config.use_go) detected.push("Go");
         if (data.config.use_rust) detected.push("Rust");
         if (data.config.docker_build) detected.push("Docker");
-        toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.");
+        toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.", { duration: 8000 });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Auto setup failed. Please configure manually.");
