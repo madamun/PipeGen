@@ -479,7 +479,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         try { const resGit = await fetch(`/api/pipeline/read?${params.toString()}${cacheBuster}`, { credentials: "include", cache: "no-store" }); if (resGit.ok) dataGit = await resGit.json(); } catch (e) { }
         if (ignore) return;
         setOriginalContent(dataGit.content || "");
-        let dataDraft = { content: "", uiState: null };
+        type DraftUiState = ComponentValues & { __syntax?: "github" | "gitlab" };
+        let dataDraft: { content: string; uiState: DraftUiState | null } = {
+          content: "",
+          uiState: null,
+        };
         try { const resDraft = await fetch(`/api/pipeline/draft?${params.toString()}${cacheBuster}`, { credentials: "include", cache: "no-store" }); if (resDraft.ok) dataDraft = await resDraft.json(); } catch (e) { }
         if (ignore) return;
         if (dataDraft.content && !dataDraft.content.startsWith("# Error:")) {

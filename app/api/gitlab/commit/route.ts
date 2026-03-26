@@ -219,16 +219,29 @@ export async function POST(req: NextRequest) {
       console.error("❌ [GitLab] Failed to save Pipeline History:", dbError);
       //
     }
+    // ลบ draft ที่ค้างอยู่หลัง commit สำเร็จ
+    // หมายเหตุ: ในโหมด PR (pull_request) เรา edit ที่ baseBranch ดังนั้นให้ลบ draft ของ baseBranch
+    const draftBranch = mode === "push" ? finalTargetBranch : baseBranch;
     try {
-      await prisma.pipelineDraft.deleteMany({
-        where: {
-          userId: userId,
-          repoFullName: full_name,
-          filePath: path,
-        },
+      const repo = await prisma.repository.findFirst({
+        where: { fullName: full_name, userId: userId, provider: "gitlab" },
+        select: { id: true },
       });
+
+      if (repo) {
+        const pipeline = await prisma.pipeline.findFirst({
+          where: { repoId: repo.id, filePath: path, branch: draftBranch },
+          select: { id: true },
+        });
+
+        if (pipeline) {
+          await prisma.pipelineDraft.deleteMany({
+            where: { pipelineId: pipeline.id },
+          });
+        }
+      }
     } catch (e) {
-  
+      console.error("❌ [GitLab] Failed to delete PipelineDraft:", e);
     }
 
     return Response.json({ ok: true, html_url });

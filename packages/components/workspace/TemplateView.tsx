@@ -538,6 +538,38 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, shouldMerge ? fileContent : ""));
   };
 
+  // ===== applyMultipleValues: set หลาย field พร้อมกัน gen YAML ครั้งเดียว =====
+  const applyMultipleValues = React.useCallback(
+    (config: Record<string, string | number | boolean | string[] | undefined>) => {
+      let nextValues = { ...componentValues, ...config };
+
+      Object.entries(config).forEach(([fieldId, finalValue]) => {
+        if (finalValue !== undefined && finalValue !== null) {
+          const lookupKey = String(finalValue);
+
+          categories.forEach((cat) =>
+            cat.components.forEach((comp: any) => {
+              const field = (comp.uiConfig?.fields || []).find((f: any) => f.id === fieldId);
+              if (field?.linkedFields) {
+                Object.entries(field.linkedFields).forEach(([targetId, mapping]: [string, any]) => {
+                  const newVal = mapping[lookupKey];
+                  if (newVal) nextValues[targetId] = newVal;
+                });
+              }
+            }),
+          );
+        }
+      });
+
+      setComponentValues(nextValues);
+      isUpdatingFromUI.current = true;
+
+      const shouldMerge = fileContent.trim() && !fileContent.startsWith("# Error");
+      setFileContent(generateYamlFromValues(categories, nextValues, syntaxProvider, shouldMerge ? fileContent : ""));
+    },
+    [componentValues, categories, fileContent, syntaxProvider],
+  );
+
   useEffect(() => {
     if (isUpdatingFromUI.current) {
       isUpdatingFromUI.current = false;
@@ -624,13 +656,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         if (ignore) return;
         setOriginalContent(dataGit.content || "");
 
-        let dataDraft = { content: "", uiState: null };
+        type DraftUiState = ComponentValues & { __syntax?: "github" | "gitlab" };
+        let dataDraft: { content: string; uiState: DraftUiState | null } = {
+          content: "",
+          uiState: null,
+        };
         try {
           const resDraft = await fetch(
             `/api/pipeline/draft?${params.toString()}${cacheBuster}`,
             { credentials: "include", cache: "no-store", }
           );
-          if (resDraft.ok) dataDraft = await resDraft.json();
+          if (resDraft.ok) dataDraft = (await resDraft.json()) as typeof dataDraft;
         } catch (e) { }
 
         if (ignore) return;
@@ -880,6 +916,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         categories,
         componentValues,
         updateComponentValue,
+        applyMultipleValues,
         autoSetup,
         isCollapsed,
         setIsCollapsed,
