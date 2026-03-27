@@ -22,7 +22,7 @@ export default defineConfig({
     projects: [
       { test: { name: "unit", include: ["tests/unit/**/*.test.ts"], environment: "node", setupFiles: ["./tests/setup/unit.setup.ts"] } },
       { plugins: [react()], test: { name: "component", include: ["tests/component/**/*.test.tsx"], environment: "jsdom", setupFiles: ["./tests/setup/component.setup.tsx"], css: true } },
-      { test: { name: "integration", include: ["tests/integration/**/*.test.ts"], environment: "node", setupFiles: ["./tests/setup/integration.setup.ts"], testTimeout: 30000, pool: "forks", poolOptions: { forks: { singleFork: true } } } },
+      { test: { name: "integration", include: ["tests/integration/**/*.test.ts"], environment: "node", setupFiles: ["./tests/setup/integration.setup.ts"], testTimeout: 30000 } },
     ],
   },
 });
