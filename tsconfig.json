@@ -34,7 +34,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
-  ],
+, "tests/setup/component.setup.ts)"  ],
   "exclude": [
     "node_modules"
   ]
