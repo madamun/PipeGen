@@ -1,0 +1,12 @@
+import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach, vi } from "vitest";
+afterEach(() => { cleanup(); });
+vi.stubGlobal("IntersectionObserver", vi.fn(() => ({ disconnect: vi.fn(), observe: vi.fn(), unobserve: vi.fn(), takeRecords: vi.fn() })));
+vi.stubGlobal("ResizeObserver", vi.fn(() => ({ disconnect: vi.fn(), observe: vi.fn(), unobserve: vi.fn() })));
+Object.defineProperty(window, "matchMedia", { writable: true, value: vi.fn().mockImplementation((q: string) => ({ matches: q === "(prefers-color-scheme: dark)", media: q, onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn() })) });
+vi.mock("@monaco-editor/react", () => ({ default: vi.fn(({ value }) => <div data-testid="mock-monaco">{value}</div>), Editor: vi.fn(), DiffEditor: vi.fn(), useMonaco: vi.fn(() => null) }));
+vi.mock("next/navigation", () => ({ useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), refresh: vi.fn() })), usePathname: vi.fn(() => "/"), useSearchParams: vi.fn(() => new URLSearchParams()), useParams: vi.fn(() => ({})) }));
+vi.mock("next/image", () => ({ default: vi.fn((props: any) => <img {...props} />) }));
+vi.mock("@tanstack/react-query", async () => { const a = await vi.importActual("@tanstack/react-query"); return { ...a, useQuery: vi.fn().mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() }) }; });
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() }, Toaster: vi.fn(() => null) }));

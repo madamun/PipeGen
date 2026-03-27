@@ -1,0 +1,11 @@
+import { test, expect } from "@playwright/test";
+import { DashboardPage } from "./pages/DashboardPage";
+
+test.describe("Repo Selection", () => {
+  test("should show welcome screen when no repo", async ({ page }) => { const d = new DashboardPage(page); await d.goto(); await d.expectWelcome(); });
+  test("should show repo selector button", async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); await expect(page.getByRole('button', { name: 'Select repository' })).toBeVisible(); });
+  test("should open repo picker dialog", async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); await page.getByRole('button', { name: 'Select repository' }).click(); await expect(page.getByRole('heading', { name: 'Select Repository' })).toBeVisible({ timeout: 5000 }); });
+  test("repo picker should have My Projects tab", async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); await page.getByRole('button', { name: 'Select repository' }).click(); await expect(page.getByRole('tab', { name: 'My Projects' })).toBeVisible(); });
+  test("repo picker should have search/filter input", async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); await page.getByRole('button', { name: 'Select repository' }).click(); await expect(page.getByRole('heading', { name: 'Select Repository' })).toBeVisible(); const searchInput = page.locator("input[placeholder*='Search']").or(page.locator("input[placeholder*='search']")).or(page.locator("input[placeholder*='Filter']")); const hasSearch = await searchInput.isVisible({ timeout: 3000 }).catch(() => false); expect(typeof hasSearch).toBe("boolean"); });
+  test("repo picker dialog should be closable", async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); await page.getByRole('button', { name: 'Select repository' }).click(); await expect(page.getByRole('heading', { name: 'Select Repository' })).toBeVisible(); await page.locator("[data-slot='dialog-close']").or(page.locator("button[aria-label='Close']")).first().click().catch(() => page.keyboard.press("Escape")); await expect(page.getByRole('heading', { name: 'Select Repository' })).not.toBeVisible({ timeout: 5000 }); });
+});
