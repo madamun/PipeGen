@@ -3,7 +3,6 @@
 Web app for creating and editing CI/CD pipeline config (YAML) for **GitHub Actions** and **GitLab CI**. Connect your GitHub or GitLab account, pick a repo and branch, then edit workflow files with a form-based UI or raw editor.
 
 ## Tech
-
 - **Next.js 15** (App Router)
 - **Better Auth** (GitHub/GitLab OAuth)
 - **Prisma** (PostgreSQL) for users, repos, pipeline drafts
