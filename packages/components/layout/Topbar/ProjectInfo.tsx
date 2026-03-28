@@ -30,10 +30,12 @@ export default function ProjectInfo() {
                   className="flex items-center gap-1.5 rounded-md px-1 py-1 -ml-3 text-left hover:bg-white/10 transition-colors group max-w-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#02184B]"
                   aria-label="Select repository"
                 >
-                  <span className="min-w-0 px-2 truncate text-base font-semibold text-white group-hover:text-white">
+                  <span className={`min-w-0 px-2 truncate text-base font-semibold group-hover:text-white
+                    ${!selectedRepo ? "text-white animate-pulse" : "text-white"}`}>
                     {selectedRepo?.name ?? "Select a repository"}
                   </span>
-                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-white mt-1" />
+                  <ChevronDown className={`h-4 w-4 shrink-0 group-hover:text-white mt-1
+                    ${!selectedRepo ? "text-white animate-pulse" : "text-slate-300"}`} />
                 </button>
               </RepoPicker>
             </div>

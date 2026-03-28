@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-// 🔥 เพิ่ม usePathname เข้ามาในบรรทัดนี้ครับ
 import { useRouter, usePathname } from "next/navigation"; 
 import { Search as SearchIcon } from "lucide-react";
 import Gitconnect from "./Gitconnect";
@@ -13,7 +12,7 @@ function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2 select-none">
       <Image
-        src="/logo.svg" // ตรวจสอบว่ามีไฟล์ logo.svg ใน folder public แล้ว
+        src="/logo.svg" 
         alt="Logo"
         width={40}
         height={40}
@@ -36,7 +35,6 @@ export function SearchBar() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        // 🔥🔥🔥 เพิ่มการตรวจสอบตรงนี้ (Guard Clause) 🔥🔥🔥
         const target = e.target as HTMLElement | null;
         if (
           target &&
@@ -83,10 +81,9 @@ export function SearchBar() {
 
 // --- Component หลัก: Navbar ---
 export default function Navbar() {
-  // 🔥 1. เรียกใช้งาน usePathname เพื่อดูว่าตอนนี้อยู่หน้าไหน
+
   const pathname = usePathname();
 
-  // 🔥 2. ถ้าอยู่หน้า /login ให้ return null (แปลว่าไม่ต้องเรนเดอร์ Navbar ตัวนี้ออกมา)
   if (pathname === "/login") {
     return null;
   }
@@ -102,13 +99,6 @@ export default function Navbar() {
       <div className="flex flex-1 items-center gap-2">
         <Logo />
       </div>
-
-      {/* กลาง: SEARCH */}
-      {/* <div className="flex flex-1 justify-center items-center">
-        <div className="w-[clamp(200px,30vw,400px)]">
-          <SearchBar />
-        </div>
-      </div> */}
 
       {/* ขวา: GITCONNECT */}
       <div className="flex flex-1 justify-end items-center gap-4">

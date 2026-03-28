@@ -347,7 +347,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`/api/pipeline/files?repoFullName=${selectedRepo.full_name}&branch=${selectedBranch}&t=${Date.now()}`, { credentials: "include", cache: "no-store" });
       const data = await res.json();
       setDraftList(data.drafts || []); setGitFileList(data.gitFiles || []); setFileList([...(data.drafts || []), ...(data.gitFiles || [])]);
-    } catch (e) { console.error(e); } finally { setIsLoadingOther(false); }
+    } catch (e) { console.error(e); } finally { setIsLoadingOther(false); hasLoadedFilesRef.current = true; }
   }, [selectedRepo, selectedBranch, repoProvider]);
 
   useEffect(() => { refreshFileList(); }, [selectedRepo, selectedBranch, refreshFileList]);
@@ -369,6 +369,39 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       resetDismissedSuggestions();
     }
   }, [selectedRepo, resetDismissedSuggestions]);
+
+  // === Auto เปิดไฟล์หลังเลือก repo ===
+  const hasAutoOpenedRef = useRef<string | null>(null);
+  const hasLoadedFilesRef = useRef(false);
+
+  // reset เมื่อเปลี่ยน repo
+  useEffect(() => {
+    hasAutoOpenedRef.current = null;
+    hasLoadedFilesRef.current = false;
+  }, [selectedRepo?.full_name, selectedBranch]);
+
+    useEffect(() => {
+    if (!selectedRepo || !repoProvider) return;
+    if (isRollingBackRef.current || isAnalyzing) return;
+    if (!hasLoadedFilesRef.current) return; // รอ fileList โหลดเสร็จจริงก่อน
+    if (openTabs.length > 0) return;
+    if (hasAutoOpenedRef.current === `${selectedRepo.full_name}/${selectedBranch}`) return;
+
+    hasAutoOpenedRef.current = `${selectedRepo.full_name}/${selectedBranch}`;
+
+    const allFiles = [...draftList, ...gitFileList];
+
+    if (allFiles.length > 0) {
+      const first = allFiles[0];
+      setOpenTabs([first.fullPath]);
+      setActiveTab(first.fullPath);
+    } else {
+      const defaultFile = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "untitled.yml";
+      const fullPath = getFullFilePath(defaultFile);
+      setOpenTabs([fullPath]);
+      setActiveTab(fullPath);
+    }
+  }, [draftList, gitFileList, selectedRepo, repoProvider, selectedBranch, isAnalyzing, openTabs.length, getFullFilePath]);
 
   const setProvider = (newSyntax: "github" | "gitlab") => {
     if (newSyntax === syntaxProvider) return;
