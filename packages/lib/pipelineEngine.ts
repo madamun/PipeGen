@@ -67,7 +67,11 @@ function buildAllContext(
   if (ctx['use_node']) {
     ctx['runtime_image'] = `node:${ctx['node_version'] || '18'}`;
     ctx['runtime_install'] = ctx['install_cmd'] || 'npm ci';
-    ctx['runtime_before_script'] = `if ! command -v ${ctx['pkg_manager'] || 'npm'} > /dev/null 2>&1; then npm install -g ${ctx['pkg_manager'] || 'npm'}; fi`;
+    // Prisma: append to install_cmd (template ใช้ {{install_cmd}} ตรงๆ)
+    if (ctx['has_prisma']) {
+      ctx['install_cmd'] = (ctx['install_cmd'] || 'npm ci') + '\nnpx prisma generate';
+      ctx['runtime_install'] = ctx['install_cmd'];
+    }
   } else if (ctx['use_python']) {
     ctx['runtime_image'] = `python:${ctx['py_version'] || '3.9'}`;
     ctx['runtime_install'] = 'pip install -r requirements.txt';
@@ -191,9 +195,17 @@ function replaceTemplateVars(template: string, ctx: Record<string, any>): string
   let prev = '';
   while (result !== prev) {
     prev = result;
-    result = result.replace(/\{\{([^{}]+)\}\}/g, (_match, varName) => {
+    result = result.replace(/\{\{([^{}]+)\}\}/g, (_match, varName, offset) => {
       const val = ctx[varName];
-      return val !== undefined ? String(val) : _match;
+      if (val === undefined) return _match;
+      const strVal = String(val);
+      // ถ้าค่ามี newline → เพิ่ม indent ให้ตรงกับตำแหน่งใน template
+      if (strVal.includes('\n')) {
+        const lineStart = result.lastIndexOf('\n', offset);
+        const indent = lineStart >= 0 ? result.slice(lineStart + 1, offset).match(/^(\s*)/)?.[1] || '' : '';
+        return strVal.replace(/\n/g, '\n' + indent);
+      }
+      return strVal;
     });
   }
   return result;

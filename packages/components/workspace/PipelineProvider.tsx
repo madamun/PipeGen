@@ -25,6 +25,9 @@ import {
   parseYamlToUI,
 } from "../../lib/pipelineEngine";
 import { toast } from "sonner";
+import AutoSetupDialog from "../layout/Topbar/AutoSetupDialog";
+import AutoSetupWizard from "../layout/Topbar/AutoSetupWizard";
+import DiscardDraftDialog from "../layout/RightPanel/DiscardDraftDialog";
 
 const PipelineContext = createContext<PipelineContextType | undefined>(
   undefined,
@@ -80,7 +83,16 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOther, setIsLoadingOther] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [existingPipelineDialog, setExistingPipelineDialog] = useState<{
+    open: boolean;
+    files: string[];
+  }>({ open: false, files: [] });
+  const pendingAutoSetupRef = useRef(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardConfig, setWizardConfig] = useState<Record<string, any>>({});
+  const pendingResolvedValues = useRef<Record<string, any>>({});
   const [isRollingBack, setIsRollingBack] = useState(false);
+  const [discardDialog, setDiscardDialog] = useState<{ open: boolean; tab: string }>({ open: false, tab: "" });
 
   const [forceReloadTrigger, setForceReloadTrigger] = useState(0);
 
@@ -131,6 +143,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const isUpdatingFromUI = useRef(false);
   const isRenamingRef = useRef(false);
+  const frameworkOverridesRef = useRef<Record<string, any>>({});
 
   const componentValuesRef = useRef<ComponentValues>({});
   useEffect(() => { componentValuesRef.current = componentValues; }, [componentValues]);
@@ -380,7 +393,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     hasLoadedFilesRef.current = false;
   }, [selectedRepo?.full_name, selectedBranch]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!selectedRepo || !repoProvider) return;
     if (isRollingBackRef.current || isAnalyzing) return;
     if (!hasLoadedFilesRef.current) return; // รอ fileList โหลดเสร็จจริงก่อน
@@ -469,6 +482,18 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         })
       );
     }
+    // ถ้า user เปลี่ยน field ที่ถูก override → ยกเลิก override (เคารพ user)
+    if (frameworkOverridesRef.current[id]) {
+      delete frameworkOverridesRef.current[id];
+    }
+
+    // apply framework overrides เฉพาะ field ที่ user ไม่ได้แก้เอง
+    if (Object.keys(frameworkOverridesRef.current).length > 0) {
+      Object.entries(frameworkOverridesRef.current).forEach(([key, val]) => {
+        if (val !== undefined) nextValues[key] = val;
+      });
+    }
+
     setComponentValues(nextValues);
     isUpdatingFromUI.current = true;
     const shouldMerge = fileContent.trim() && !fileContent.startsWith('# Error');
@@ -567,16 +592,46 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   };
 
   const discardDraft = async () => {
-    if (!selectedRepo || !activeTab || !confirm(`Discard draft for this file?`)) return false;
-    try {
-      setIsSaving(true); const tabToClose = activeTab;
-      const res = await fetch("/api/pipeline/draft", { method: "DELETE", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(tabToClose), branch: selectedBranch }) });
-      if (res.ok) { activeFileContext.current = ""; setFileContent(""); delete lastSavedContent.current[tabToClose]; closeTab(tabToClose); refreshFileList(); return true; }
-    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+    if (!selectedRepo || !activeTab) return false;
+    setDiscardDialog({ open: true, tab: activeTab });
     return false;
   };
 
-    const autoSetup = async () => {
+  const executeDiscard = async () => {
+    const tabToClose = discardDialog.tab;
+    setDiscardDialog({ open: false, tab: "" });
+    if (!selectedRepo || !tabToClose) return;
+    try {
+      setIsSaving(true);
+      const res = await fetch("/api/pipeline/draft", { method: "DELETE", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repoFullName: selectedRepo.full_name, filePath: getFullFilePath(tabToClose), branch: selectedBranch }) });
+      if (res.ok) { activeFileContext.current = ""; setFileContent(""); delete lastSavedContent.current[tabToClose]; closeTab(tabToClose); refreshFileList(); }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+  };
+
+  const autoSetup = async () => {
+    if (!selectedRepo || !repoProvider) return;
+
+    // เช็คว่ามี CI file อยู่แล้วไหม
+    const existingCIFiles = fileList.filter(f => {
+      const name = f.fullPath.toLowerCase();
+      return name.includes('.github/workflows/') ||
+        name === '.gitlab-ci.yml' ||
+        name.includes('.gitlab/ci/');
+    });
+
+    if (existingCIFiles.length > 0 && !pendingAutoSetupRef.current) {
+      setExistingPipelineDialog({
+        open: true,
+        files: existingCIFiles.map(f => f.fullPath),
+      });
+      return;
+    }
+
+    pendingAutoSetupRef.current = false;
+    await autoSetupExecute();
+  };
+
+  const autoSetupExecute = async () => {
     if (!selectedRepo || !repoProvider) return;
     setIsAnalyzing(true);
     try {
@@ -592,44 +647,48 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (data.config) {
         const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
 
-        // รวม config + platformDefaults
-        let configWithDefaults = { ...data.config };
+        // === Step 1: รวม analyzer config + platformDefaults ===
+        const analyzerConfig = { ...data.config };
         categories.forEach((cat) =>
           cat.components.forEach((comp) =>
             comp.uiConfig?.fields?.forEach((field) => {
               if (field.platformDefaults?.[repoProvider])
-                configWithDefaults[field.id] = field.platformDefaults[repoProvider];
+                analyzerConfig[field.id] = field.platformDefaults[repoProvider];
             }),
           ),
         );
 
-        // gen YAML ก่อน
-        const generated = generateYamlFromValues(categories, { ...componentValuesRef.current, ...configWithDefaults }, syntaxProvider, "");
+        // === Step 2: resolve linkedFields ===
+        let resolvedValues = { ...analyzerConfig };
+        Object.entries(analyzerConfig).forEach(([fieldId, val]) => {
+          if (val !== undefined && val !== null) {
+            const lookupKey = String(val);
+            categories.forEach(cat =>
+              cat.components.forEach((comp: any) => {
+                const field = (comp.uiConfig?.fields || []).find((f: any) => f.id === fieldId);
+                if (field?.linkedFields) {
+                  Object.entries(field.linkedFields).forEach(([targetId, mapping]: [string, any]) => {
+                    const newVal = mapping[lookupKey];
+                    if (newVal) resolvedValues[targetId] = newVal;
+                  });
+                }
+              })
+            );
+          }
+        });
 
-        // save draft FIRST (ก่อน switch tab เพื่อให้ loadContent เจอ)
-        const fullPath = getFullFilePath(targetFileName);
-        const existingTab = openTabs.find((t) => t === targetFileName || t === fullPath || getFullFilePath(t) === fullPath);
-        const tabToUse = existingTab || fullPath;
+        // === Step 3: analyzer ค่า specific เขียนทับ linkedFields กลับ ===
+        if (data.config.test_cmd) resolvedValues.test_cmd = data.config.test_cmd;
+        if (data.config.build_cmd) resolvedValues.build_cmd = data.config.build_cmd;
+        if (data.config.lint_cmd) resolvedValues.lint_cmd = data.config.lint_cmd;
+        if (data.config.install_cmd) resolvedValues.install_cmd = data.config.install_cmd;
+        if (data.config.pkg_manager) resolvedValues.pkg_manager = data.config.pkg_manager;
 
-        activeFileContext.current = tabToUse;
-        lastSavedContent.current[tabToUse] = "";
-        await saveDraftToDB(generated, tabToUse);
-
-        // เปิด tab (loadContent จะเจอ draft แล้ว)
-        if (activeTab !== tabToUse) {
-          setOpenTabs((prev) => prev.includes(tabToUse) ? prev : [...prev, tabToUse]);
-          setActiveTab(tabToUse);
-        }
-        // set UI state
-        applyMultipleValues(configWithDefaults);
-
-        const detected: string[] = [];
-        if (data.config.use_node) detected.push("Node.js");
-        if (data.config.use_python) detected.push("Python");
-        if (data.config.use_go) detected.push("Go");
-        if (data.config.use_rust) detected.push("Rust");
-        if (data.config.docker_build) detected.push("Docker");
-        toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.", { duration: 8000 });
+        // === Step 4: เปิด Wizard ให้ user ยืนยัน ===
+        pendingResolvedValues.current = resolvedValues;
+        setWizardConfig(data.config);
+        setWizardOpen(true);
+        return; // หยุดตรงนี้ รอ user กด confirm
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Auto setup failed. Please configure manually.");
@@ -638,29 +697,133 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // === Wizard confirmed → gen YAML จริง ===
+  const handleWizardConfirm = async (extras: Record<string, boolean>) => {
+    setWizardOpen(false);
+    setIsAnalyzing(true);
+
+    try {
+      const resolvedValues = { ...pendingResolvedValues.current };
+      const config = wizardConfig;
+
+      // apply extras ที่ user เลือกเพิ่ม
+      Object.entries(extras).forEach(([key, enabled]) => {
+        if (enabled) resolvedValues[key] = true;
+      });
+
+      // gen YAML
+      let generated = generateYamlFromValues(categories, resolvedValues, syntaxProvider, "");
+
+      const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
+
+      // === Step 5: save draft + เปิด tab ===
+      const fullPath = getFullFilePath(targetFileName);
+      const existingTab = openTabs.find((t) => t === targetFileName || t === fullPath || getFullFilePath(t) === fullPath);
+      const tabToUse = existingTab || fullPath;
+
+      activeFileContext.current = tabToUse;
+      lastSavedContent.current[tabToUse] = "";
+      await saveDraftToDB(generated, tabToUse);
+
+      if (activeTab !== tabToUse) {
+        setOpenTabs((prev) => prev.includes(tabToUse) ? prev : [...prev, tabToUse]);
+        setActiveTab(tabToUse);
+      }
+
+      // === Step 6: set UI state ===
+      // เก็บ framework overrides ป้องกัน linkedFields เขียนทับตอน user toggle switch
+      frameworkOverridesRef.current = {};
+      if (config.test_cmd) frameworkOverridesRef.current.test_cmd = config.test_cmd;
+      if (config.install_cmd) frameworkOverridesRef.current.install_cmd = config.install_cmd;
+      if (config.build_cmd) frameworkOverridesRef.current.build_cmd = config.build_cmd;
+      if (config.pkg_manager) frameworkOverridesRef.current.pkg_manager = config.pkg_manager;
+
+      setComponentValues(resolvedValues);
+      isUpdatingFromUI.current = true;
+      setFileContent(generated);
+
+      // === Step 7: toast ===
+      const detected: string[] = [];
+      if (config.detected_framework) {
+        detected.push(config.detected_framework);
+      } else if (config.use_node) {
+        detected.push(config.pkg_manager === "bun" ? "Bun" : "Node.js");
+      }
+      if (config.use_python) detected.push("Python");
+      if (config.use_go) detected.push("Go");
+      if (config.use_rust) detected.push("Rust");
+      if (config.docker_build) detected.push("Docker");
+      if (config.has_prisma) detected.push("Prisma");
+      if (config.detected_test_framework) detected.push(config.detected_test_framework);
+      toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.", { duration: 8000 });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Auto setup failed. Please configure manually.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // === Dialog: Respect Existing Pipeline ===
+  const handleExistingPipelineChoice = (choice: "overwrite" | "open") => {
+    setExistingPipelineDialog({ open: false, files: [] });
+    if (choice === "overwrite") {
+      pendingAutoSetupRef.current = true;
+      autoSetup();
+    } else {
+      // เปิดไฟล์เดิม
+      const firstFile = existingPipelineDialog.files[0];
+      if (firstFile) {
+        setOpenTabs(prev => prev.includes(firstFile) ? prev : [...prev, firstFile]);
+        setActiveTab(firstFile);
+      }
+    }
+  };
+
   return (
-    <PipelineContext.Provider
-      value={{
-        language: syntaxProvider,
-        setLanguage: (lang: string) => setProvider(lang as "github" | "gitlab"),
-        provider: syntaxProvider, setProvider,
-        availableRepos, fetchRepos, selectedRepo, setSelectedRepo,
-        selectedBranch, setSelectedBranch, fetchBranches, availableBranches,
-        fileContent, setFileContent,
-        openTabs, setOpenTabs, activeTab, setActiveTab: handleSetActiveTab, closeTab,
-        selectedFile: activeTab, setSelectedFile,
-        fileList, draftList, gitFileList, originalContent,
-        isSaving, isLoading, isAnalyzing, isRollingBack,
-        renameCurrentFile, commitFile, discardDraft,
-        categories, componentValues, updateComponentValue, applyMultipleValues,
-        autoSetup,
-        isCollapsed, setIsCollapsed, categoriesOpen, setCategoriesOpen, sectionsOpen, setSectionsOpen,
-        navigateToBlock, scrollTarget, setScrollTarget,
-        dismissedSuggestions, dismissSuggestion, resetDismissedSuggestions,
-      }}
-    >
-      {children}
-    </PipelineContext.Provider>
+    <>
+      <DiscardDraftDialog
+        open={discardDialog.open}
+        fileName={discardDialog.tab}
+        onConfirm={executeDiscard}
+        onClose={() => setDiscardDialog({ open: false, tab: "" })}
+      />
+      <AutoSetupWizard
+        open={wizardOpen}
+        config={wizardConfig}
+        repoFullName={selectedRepo?.full_name}
+        provider={repoProvider || undefined}
+        onConfirm={handleWizardConfirm}
+        onClose={() => { setWizardOpen(false); setIsAnalyzing(false); }}
+      />
+      <AutoSetupDialog
+        open={existingPipelineDialog.open}
+        files={existingPipelineDialog.files}
+        onChoice={handleExistingPipelineChoice}
+        onClose={() => setExistingPipelineDialog({ open: false, files: [] })}
+      />
+      <PipelineContext.Provider
+        value={{
+          language: syntaxProvider,
+          setLanguage: (lang: string) => setProvider(lang as "github" | "gitlab"),
+          provider: syntaxProvider, setProvider,
+          availableRepos, fetchRepos, selectedRepo, setSelectedRepo,
+          selectedBranch, setSelectedBranch, fetchBranches, availableBranches,
+          fileContent, setFileContent,
+          openTabs, setOpenTabs, activeTab, setActiveTab: handleSetActiveTab, closeTab,
+          selectedFile: activeTab, setSelectedFile,
+          fileList, draftList, gitFileList, originalContent,
+          isSaving, isLoading, isAnalyzing, isRollingBack,
+          renameCurrentFile, commitFile, discardDraft,
+          categories, componentValues, updateComponentValue, applyMultipleValues,
+          autoSetup,
+          isCollapsed, setIsCollapsed, categoriesOpen, setCategoriesOpen, sectionsOpen, setSectionsOpen,
+          navigateToBlock, scrollTarget, setScrollTarget,
+          dismissedSuggestions, dismissSuggestion, resetDismissedSuggestions,
+        }}
+      >
+        {children}
+      </PipelineContext.Provider>
+    </>
   );
 }
 

@@ -36,6 +36,17 @@ export interface AnalyzedConfig extends ComponentValues {
   build_cmd?: string;
   lint_cmd?: string;
   install_cmd?: string;
+  detected_framework?: string;
+  detected_test_framework?: string;
+  has_prisma?: boolean;
+  has_playwright?: boolean;
+  has_cypress?: boolean;
+  extra_install_steps?: string;
+  detected_build_tool?: string;
+  // เพิ่ม Properties สำหรับ Cache
+  enable_cache?: boolean;
+  cache_path?: string;
+  cache_key?: string;
 }
 
 const DEFAULT_CONFIG: AnalyzedConfig = {
@@ -67,9 +78,9 @@ async function fetchRepoFile(
   const headers: Record<string, string> =
     provider === "github"
       ? {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3.raw",
-      }
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github.v3.raw",
+        }
       : { Authorization: `Bearer ${accessToken}` };
 
   if (provider === "github") {
@@ -109,7 +120,7 @@ export async function analyzeRepo(
   if (packageJsonRaw) {
     config.use_node = true;
 
-    const bunLock = await fetchFile("bun.lockb") || await fetchFile("bun.lock");
+    const bunLock = (await fetchFile("bun.lockb")) || (await fetchFile("bun.lock"));
     if (bunLock) {
       config.pkg_manager = "bun";
     } else {
@@ -208,6 +219,157 @@ export async function analyzeRepo(
     } else {
       config.check_quality = false;
       config.lint_cmd = undefined;
+    }
+  }
+
+  // 7. Framework Detection — อ่าน dependencies เพื่อตั้งค่าให้ตรง framework
+  if (packageJsonRaw) {
+    try {
+      const pkg = JSON.parse(packageJsonRaw) as Record<string, unknown>;
+      const deps = {
+        ...(pkg.dependencies as Record<string, string>),
+        ...(pkg.devDependencies as Record<string, string>),
+      };
+      const scripts = pkg.scripts as Record<string, string> | undefined;
+      const pm = config.pkg_manager || "npm";
+      const runCmd = pm === "bun" ? "bun run" : pm === "yarn" ? "yarn" : pm === "pnpm" ? "pnpm" : "npm run";
+
+      // ============ Frontend Frameworks ============
+
+      if (deps?.next) {
+        config.node_version = "20";
+        if (scripts?.build) config.build_cmd = `${runCmd} build`;
+        config.run_build = true;
+        config.enable_cache = true;
+        config.cache_path = ".next/cache";
+        config.cache_key = `nextjs-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Next.js";
+      }
+      else if (deps?.nuxt) {
+        config.node_version = "20";
+        if (scripts?.build) { config.build_cmd = `${runCmd} build`; config.run_build = true; }
+        config.enable_cache = true;
+        config.cache_path = ".nuxt";
+        config.cache_key = `nuxt-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Nuxt";
+      }
+      else if (deps?.["@angular/core"]) {
+        config.node_version = "20";
+        if (scripts?.build) config.build_cmd = `${runCmd} build`;
+        config.run_build = true;
+        config.enable_cache = true;
+        config.cache_path = ".angular/cache";
+        config.cache_key = `angular-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Angular";
+      }
+      else if (deps?.["@sveltejs/kit"] || deps?.svelte) {
+        config.node_version = "20";
+        if (scripts?.build) { config.build_cmd = `${runCmd} build`; config.run_build = true; }
+        config.detected_framework = "SvelteKit";
+      }
+      else if (deps?.astro) {
+        config.node_version = "20";
+        if (scripts?.build) { config.build_cmd = `${runCmd} build`; config.run_build = true; }
+        config.enable_cache = true;
+        config.cache_path = "node_modules/.astro";
+        config.cache_key = `astro-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Astro";
+      }
+      else if (deps?.gatsby) {
+        config.node_version = "20";
+        if (scripts?.build) { config.build_cmd = `${runCmd} build`; config.run_build = true; }
+        config.enable_cache = true;
+        config.cache_path = ".cache\npublic";
+        config.cache_key = `gatsby-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Gatsby";
+      }
+      else if (deps?.["@remix-run/node"] || deps?.["@remix-run/react"]) {
+        config.node_version = "20";
+        if (scripts?.build) { config.build_cmd = `${runCmd} build`; config.run_build = true; }
+        config.detected_framework = "Remix";
+      }
+      else if (deps?.vite) {
+        config.node_version = "20";
+        if (scripts?.build) config.build_cmd = `${runCmd} build`;
+        config.run_build = true;
+        config.enable_cache = true;
+        config.cache_path = "node_modules/.vite";
+        config.cache_key = `vite-${pm}-\${{ runner.os }}`;
+        config.detected_framework = "Vite";
+      }
+
+      // ============ Backend Frameworks ============
+
+      else if (deps?.["@nestjs/core"]) {
+        if (scripts?.build) config.build_cmd = `${runCmd} build`;
+        config.run_build = true;
+        config.run_tests = true;
+        if (scripts?.test) config.test_cmd = `${runCmd} test`;
+        config.detected_framework = "NestJS";
+      }
+      else if (deps?.elysia) {
+        config.pkg_manager = "bun";
+        config.install_cmd = "bun install --frozen-lockfile";
+        if (scripts?.test) config.test_cmd = "bun test";
+        if (scripts?.build) config.build_cmd = "bun run build";
+        config.detected_framework = "Elysia";
+      }
+      else if (deps?.fastify) {
+        config.detected_framework = "Fastify";
+      }
+      else if (deps?.hono) {
+        config.detected_framework = "Hono";
+      }
+      else if (deps?.koa) {
+        config.detected_framework = "Koa";
+      }
+      else if (deps?.express) {
+        config.detected_framework = "Express";
+      }
+
+      // ============ Database / ORM ============
+
+      // --- Prisma (รวม prisma generate เข้า install_cmd) ---
+      const hasPrisma = !!(deps?.prisma || deps?.["@prisma/client"]);
+      console.log("[Analyzer] Prisma check:", hasPrisma, "deps.prisma:", deps?.prisma, "deps.@prisma/client:", deps?.["@prisma/client"]);
+      console.log("[Analyzer] install_cmd before:", config.install_cmd);
+      if (hasPrisma) {
+        config.has_prisma = true;
+      }
+      console.log("[Analyzer] install_cmd after:", config.install_cmd);
+
+      // ============ Test Frameworks ============
+
+      if (deps?.vitest) {
+        config.test_cmd = pm === "bun" ? "bun run vitest run" : "npx vitest run";
+        config.run_tests = true;
+        config.detected_test_framework = "Vitest";
+      } else if (deps?.jest) {
+        config.test_cmd = pm === "bun" ? "bun test" : `${runCmd} test`;
+        config.run_tests = true;
+        config.detected_test_framework = "Jest";
+      } else if (deps?.mocha) {
+        config.test_cmd = "npx mocha";
+        config.run_tests = true;
+        config.detected_test_framework = "Mocha";
+      }
+
+      if (deps?.["@playwright/test"]) {
+        config.has_playwright = true;
+      }
+      if (deps?.cypress) {
+        config.has_cypress = true;
+      }
+
+      // ============ Build Tools ============
+
+      if (deps?.turbo) {
+        if (scripts?.build) config.build_cmd = "npx turbo build";
+        config.detected_build_tool = "Turborepo";
+      }
+
+    } catch (e) {
+      console.error("Framework detection error:", e);
     }
   }
 

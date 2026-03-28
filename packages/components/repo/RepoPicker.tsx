@@ -145,7 +145,7 @@ export default function RepoPicker(props: { children?: React.ReactNode }) {
 
               {/* กลุ่มปุ่ม Action ฝั่งขวา (Manage & Refresh) */}
               <div className="flex items-center gap-2">
-<Tooltip>
+                <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       size="sm"
