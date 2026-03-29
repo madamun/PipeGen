@@ -611,13 +611,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const autoSetup = async () => {
     if (!selectedRepo || !repoProvider) return;
 
-    // เช็คว่ามี CI file อยู่แล้วไหม
-    const existingCIFiles = fileList.filter(f => {
-      const name = f.fullPath.toLowerCase();
-      return name.includes('.github/workflows/') ||
-        name === '.gitlab-ci.yml' ||
-        name.includes('.gitlab/ci/');
-    });
+    // เช็คว่ามี CI file ที่ Auto Setup จะเขียนทับอยู่แล้วไหม
+    const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
+    const targetFullPath = getFullFilePath(targetFileName);
+    const existingCIFiles = fileList.filter(f =>
+      f.fullPath === targetFullPath || f.fullPath === targetFileName
+    );
 
     if (existingCIFiles.length > 0 && !pendingAutoSetupRef.current) {
       setExistingPipelineDialog({
@@ -714,6 +713,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       // gen YAML
       let generated = generateYamlFromValues(categories, resolvedValues, syntaxProvider, "");
 
+      // Docker subfolder: แก้ docker build command ให้ใช้ path ที่เจอ
+      if (config.detected_docker_path && config.detected_docker_path !== "Dockerfile") {
+        const dockerDir = config.detected_docker_path.replace(/\/[^/]*$/, "") || ".";
+        generated = generated.replace(
+          /docker build -t ([^\s]+) \./g,
+          `docker build -t $1 -f ${config.detected_docker_path} ./${dockerDir}`
+        );
+      }
+
       const targetFileName = repoProvider === "gitlab" ? ".gitlab-ci.yml" : "main.yml";
 
       // === Step 5: save draft + เปิด tab ===
@@ -755,6 +763,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (config.docker_build) detected.push("Docker");
       if (config.has_prisma) detected.push("Prisma");
       if (config.detected_test_framework) detected.push(config.detected_test_framework);
+      if (config.is_monorepo) detected.push(`Monorepo (${config.sub_projects?.length || 0} projects)`);
       toast.success(detected.length ? `Auto Setup complete. Detected: ${detected.join(", ")}` : "Auto Setup complete.", { duration: 8000 });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Auto setup failed. Please configure manually.");

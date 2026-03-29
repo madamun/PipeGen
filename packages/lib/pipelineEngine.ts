@@ -67,10 +67,21 @@ function buildAllContext(
   if (ctx['use_node']) {
     ctx['runtime_image'] = `node:${ctx['node_version'] || '18'}`;
     ctx['runtime_install'] = ctx['install_cmd'] || 'npm ci';
+
     // Prisma: append to install_cmd (template ใช้ {{install_cmd}} ตรงๆ)
     if (ctx['has_prisma']) {
-      ctx['install_cmd'] = (ctx['install_cmd'] || 'npm ci') + '\nnpx prisma generate';
+      if (targetSyntax === 'github') {
+        ctx['install_cmd'] = `${ctx['install_cmd'] || 'npm ci'}\nnpx prisma generate`;
+      } else {
+        ctx['install_cmd'] = `${ctx['install_cmd'] || 'npm ci'}\nnpx prisma generate`;
+      }
       ctx['runtime_install'] = ctx['install_cmd'];
+    }
+
+    // Monorepo: Docker path จากโฟลเดอร์ย่อย
+    if (ctx['detected_docker_path'] && ctx['detected_docker_path'] !== 'Dockerfile') {
+      const dockerDir = ctx['detected_docker_path'].replace(/\/Dockerfile$/i, '') || '.';
+      ctx['docker_build_cmd'] = `docker build -t \${ctx['image_name'] || 'username/repo'}:\${ctx['docker_tag'] || 'latest'} -f ${ctx['detected_docker_path']} ./${dockerDir}`;
     }
   } else if (ctx['use_python']) {
     ctx['runtime_image'] = `python:${ctx['py_version'] || '3.9'}`;
@@ -88,6 +99,12 @@ function buildAllContext(
     ctx['runtime_image'] = 'node:18';
     ctx['runtime_install'] = '';
     ctx['runtime_before_script'] = '';
+  }
+
+  // Docker: ถ้าเจอ Dockerfile ใน subfolder → แก้ build context
+  if (ctx['detected_docker_path'] && ctx['detected_docker_path'] !== 'Dockerfile') {
+    const dockerDir = String(ctx['detected_docker_path']).replace(/\/[^/]*$/, '') || '.';
+    ctx['docker_build_override'] = `docker build -t ${ctx['image_name'] || 'username/repo'}:${ctx['docker_tag'] || 'latest'} -f ${ctx['detected_docker_path']} ./${dockerDir}`;
   }
 
   // Coverage test command ตามภาษา

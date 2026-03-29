@@ -52,10 +52,17 @@ export default function AutoSetupWizard({ open, config, repoFullName, provider, 
     if (config.use_go) items.push({ icon: <Box className="h-4 w-4 text-cyan-400" />, label: "Go", detail: `v${config.go_version || "1.21"}` });
     if (config.use_rust) items.push({ icon: <Box className="h-4 w-4 text-orange-400" />, label: "Rust", detail: config.rust_version || "stable" });
     if (config.has_prisma) items.push({ icon: <Database className="h-4 w-4 text-indigo-400" />, label: "Prisma", detail: "prisma generate" });
-    if (config.docker_build) items.push({ icon: <Container className="h-4 w-4 text-sky-400" />, label: "Docker", detail: "Dockerfile found" });
+    if (config.docker_build) {
+      const count = config.all_dockerfiles?.length || 1;
+      items.push({ icon: <Container className="h-4 w-4 text-sky-400" />, label: "Docker", detail: count > 1 ? `${count} Dockerfiles found` : "Dockerfile found" });
+    }
     if (config.detected_test_framework) items.push({ icon: <TestTube className="h-4 w-4 text-emerald-400" />, label: config.detected_test_framework, detail: config.test_cmd });
     if (config.check_quality) items.push({ icon: <Code className="h-4 w-4 text-purple-400" />, label: "ESLint", detail: config.lint_cmd });
     if (config.enable_cache) items.push({ icon: <Gauge className="h-4 w-4 text-amber-400" />, label: "Cache", detail: config.cache_path });
+    if (config.is_monorepo) items.push({ icon: <Box className="h-4 w-4 text-pink-400" />, label: "Monorepo", detail: `${config.sub_projects?.length || 0} projects` });
+    if (config.detected_docker_path && config.detected_docker_path !== "Dockerfile") {
+      items.push({ icon: <Container className="h-4 w-4 text-orange-400" />, label: "Docker (subfolder)", detail: config.detected_docker_path });
+    }
     return items;
   }, [config]);
 
@@ -121,21 +128,21 @@ export default function AutoSetupWizard({ open, config, repoFullName, provider, 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="top-[2%] translate-y-0 max-w-[28rem] w-full border border-[#B4CAFD] text-slate-50 bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)] p-5 shadow-2xl">
+      <DialogContent className="top-[1%] translate-y-0 max-w-[28rem] w-full border border-[#B4CAFD] text-slate-50 bg-[radial-gradient(121.01%_173%_at_50%_173%,#5184FB_0%,#0437AE_40.15%,#02184B_100%)] p-5 pt-2 pb-3 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl flex items-center gap-2">
             <PackageCheck className="h-5 w-5 text-emerald-400" />
             Auto Setup Summary
           </DialogTitle>
-          <DialogDescription className="text-sm text-[#B4CAFD] mt-1">
+          <DialogDescription className="text-sm text-[#B4CAFD] mt-0">
             We analyzed your repository and found the following
-          </DialogDescription>
+          </DialogDescription> 
         </DialogHeader>
 
         {/* Detected Technologies — 2 columns */}
-        <div className="mt-2">
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Detected</p>
-          <div className="bg-black/20 border border-white/10 rounded-lg p-2.5 grid grid-cols-2 gap-x-15 gap-y-1.5">
+        <div className="mt-0">
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-0.5">Detected</p>
+          <div className="bg-black/20 border border-white/10 rounded-lg p-2.5 pt-1.5 pb-1.5 grid grid-cols-2 gap-x-15 gap-y-1.5">
             {detected.length > 0 ? detected.map((item, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
                 {item.icon}
@@ -149,9 +156,24 @@ export default function AutoSetupWizard({ open, config, repoFullName, provider, 
         </div>
 
         {/* Optional section compact */}
+         {/* Sub-project details */}
+        {config.sub_project_details && config.sub_project_details.length > 0 && (
+          <div className="mt-0">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-0.5">Sub-projects</p>
+            <div className="bg-black/20 border border-white/10 rounded-lg p-2.5 pt-1.5 pb-1.5 space-y-1">
+              {config.sub_project_details.map((detail: string, i: number) => (
+                <div key={i} className="text-xs text-slate-300 font-mono">
+                  📁 {detail}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Optional Additions */}
         {optionals.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Would you like to add?</p>
+          <div className="mt-0">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-0.5">Would you like to add?</p>
             <div className="space-y-1">
               {optionals.map((item) => (
                 <button
@@ -179,19 +201,19 @@ export default function AutoSetupWizard({ open, config, repoFullName, provider, 
 
         {/* Secrets Warning */}
         {secretsNeeded.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs font-medium text-amber-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <div className="mt-0">
+            <p className="text-xs font-medium text-amber-400 uppercase tracking-wider  flex items-center gap-1.5">
               <KeyRound className="h-3.5 w-3.5" />
               Secrets Required
             </p>
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 space-y-1">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 pt-1.5 pb-1.5 space-y-1">
               {secretsNeeded.map((s, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs">
                   <code className="font-mono text-amber-300 bg-black/20 px-1.5 py-0.5 rounded text-[10px]">{s.name}</code>
                   <span className="text-slate-400 text-[11px] ml-auto">{s.reason}</span>
                 </div>
               ))}
-              <p className="text-[12px] text-slate-300 mt-1.5 pt-1.5 border-t border-white/5">
+              <p className="text-[12px] text-slate-300 mt-0.5 pt-0.5 border-t border-white/5">
                 Add these in{" "}
                 {repoFullName ? (
                   <a
@@ -216,7 +238,7 @@ export default function AutoSetupWizard({ open, config, repoFullName, provider, 
         )}
 
         {/* Buttons compact */}
-        <div className="flex flex-col gap-2 pt-2">
+        <div className="flex flex-col gap-1 ">
           <Button
             className="w-full flex items-center justify-center gap-2 bg-[#3b82f6] hover:bg-[#2f6ad6] text-white rounded-lg py-2.5 shadow-md shadow-blue-500/20"
             onClick={() => onConfirm(extras)}
