@@ -126,7 +126,7 @@ Your job is to help users edit their pipeline YAML. You have access to their cur
 CRITICAL RULES:
 1. When the user asks to ADD a step/job, output a brief explanation (2-3 sentences) followed by the YAML snippet in a code block. Never output the entire file.
 2. Match the indentation of the existing file exactly. For GitHub Actions steps, use the same indent as other "- name:" lines in the file.
-3. Use these exact templates from our system (do NOT invent your own):
+3. Use these exact templates from our system. Do NOT invent your own steps. Always use the templates below as-is:
 
 GitHub Actions steps:
 - Deploy to Vercel:
@@ -149,7 +149,14 @@ GitHub Actions steps:
         with:
           token: \${{ secrets.CODECOV_TOKEN }}
 
-- Docker Build & Push:
+- Cache Dependencies:
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-npm-\${{ runner.os }}
+
+- Docker Build & Push
       - name: Build Docker Image
         run: docker build -t username/repo:latest .
       - name: Push to Docker Hub
