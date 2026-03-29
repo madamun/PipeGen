@@ -57,7 +57,7 @@ export default function EditorAIPanel({
   open,
   onOpenChange,
 }: EditorAIPanelProps) {
-  const { fileContent, setFileContent, selectedFile, componentValues, provider, categories, updateComponentValue, applyMultipleValues } = usePipeline();
+  const { fileContent, setFileContent, selectedFile, componentValues, provider, categories, updateComponentValue, applyMultipleValues, selectedRepo, selectedBranch, fileList } = usePipeline();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -303,6 +303,41 @@ const handleApply = useCallback((code: string) => {
       return idx === -1 ? 999 : idx;
     };
 
+    // 2.5 เช็คก่อนว่า snippet เป็น trigger block ไหม (on: push: ฯลฯ)
+    // AI อาจส่ง trigger มาเป็น code block → ต้อง merge ไม่ใช่ append
+    const triggerPattern = /^(on:|'on':|"on":)\s*\n/m;
+    if (triggerPattern.test(trimmed) && !/^(jobs:|stages:)/m.test(trimmed)) {
+      try {
+        const PLACEHOLDER_T = "__GHEXPR_T__";
+        const ghExprs: string[] = [];
+        const escT = (t: string) => t.replace(/\$\{\{([^}]*)\}\}/g, (_, inner) => { ghExprs.push(inner); return `${PLACEHOLDER_T}${ghExprs.length - 1}__`; });
+        const unescT = (t: string) => t.replace(/__GHEXPR_T__(\d+)__/g, (_, idx) => `\${{ ${ghExprs[parseInt(idx)].trim()} }}`);
+
+        const escapedDoc = escT(fileContent);
+        const escapedTrigger = escT(trimmed);
+        const doc = yaml.load(escapedDoc) as any;
+        const triggerSnippet = yaml.load(escapedTrigger) as any;
+
+        if (doc && triggerSnippet) {
+          const newOn = triggerSnippet.on || triggerSnippet[true as any] || triggerSnippet;
+          const docOn = doc.on || doc[true as any] || {};
+          for (const [key, val] of Object.entries(newOn)) {
+            if (key === 'on' || key === 'true') continue;
+            docOn[key] = val;
+          }
+          delete doc[true as any]; delete doc.on;
+          const newDoc: any = {};
+          if (doc.name) newDoc.name = doc.name;
+          newDoc.on = docOn;
+          for (const [k, v] of Object.entries(doc)) { if (k !== "name") newDoc[k] = v; }
+          let result = yaml.dump(newDoc, { lineWidth: -1, noRefs: true });
+          result = result.replace(/\n(\s*)- name:/g, "\n\n$1- name:");
+          setFileContent(unescT(result));
+          return;
+        }
+      } catch { /* fallthrough */ }
+    }
+
     // 3. GitHub Actions: Smart insert ด้วย YAML parse
     try {
       // escape ${{ }} ก่อน parse
@@ -424,16 +459,50 @@ const handleApply = useCallback((code: string) => {
     const snippet = formatted.join("\n");
     const snippetLower = snippet.toLowerCase();
 
+    // Fallback dedup: ลบ step ที่ชื่อซ้ำก่อน insert
+    const newStepNames: string[] = [];
+    for (const line of formatted) {
+      const nameMatch = line.match(/- name:\s*(.+)/);
+      if (nameMatch) newStepNames.push(nameMatch[1].trim());
+    }
+
+    let dedupedContent = fileContent;
+    if (newStepNames.length > 0) {
+      const contentLines = dedupedContent.split("\n");
+      const linesToRemove = new Set<number>();
+
+      for (const stepName of newStepNames) {
+        for (let i = 0; i < contentLines.length; i++) {
+          if (linesToRemove.has(i)) continue;
+          if (contentLines[i].includes(`- name: ${stepName}`)) {
+            // ลบ step นี้ทั้ง block (จนเจอ "- name:" ถัดไป หรือจบ steps)
+            linesToRemove.add(i);
+            for (let j = i + 1; j < contentLines.length; j++) {
+              const t = contentLines[j].trim();
+              if (t.startsWith("- name:") || t.startsWith("- uses:") || t === "") break;
+              linesToRemove.add(j);
+            }
+          }
+        }
+      }
+
+      if (linesToRemove.size > 0) {
+        dedupedContent = contentLines.filter((_, i) => !linesToRemove.has(i)).join("\n");
+        // ลบ blank lines ซ้อน
+        dedupedContent = dedupedContent.replace(/\n{3,}/g, "\n\n");
+      }
+    }
+
     // Smart fallback position
     // Cache/Install → หลัง Setup/Install step
     if (snippetLower.includes("cache") || snippetLower.includes("install")) {
       const patterns = ["- name: Install", "- name: Setup"];
       for (const pattern of patterns) {
-        const idx = fileContent.lastIndexOf(pattern);
+        const idx = dedupedContent.lastIndexOf(pattern);
         if (idx >= 0) {
-          const nextStep = fileContent.indexOf("\n" + " ".repeat(stepIndent) + "- name:", idx + pattern.length);
-          const insertAt = nextStep >= 0 ? nextStep : fileContent.length;
-          setFileContent(fileContent.slice(0, insertAt) + "\n\n" + snippet + fileContent.slice(insertAt));
+          const nextStep = dedupedContent.indexOf("\n" + " ".repeat(stepIndent) + "- name:", idx + pattern.length);
+          const insertAt = nextStep >= 0 ? nextStep : dedupedContent.length;
+          setFileContent(dedupedContent.slice(0, insertAt) + "\n\n" + snippet + dedupedContent.slice(insertAt));
           return;
         }
       }
@@ -441,15 +510,15 @@ const handleApply = useCallback((code: string) => {
 
     // Test/Lint/Security → ก่อน Build step
     if (snippetLower.includes("test") || snippetLower.includes("lint") || snippetLower.includes("security") || snippetLower.includes("audit") || snippetLower.includes("scan")) {
-      const buildIdx = fileContent.indexOf(" ".repeat(stepIndent) + "- name: Build");
+      const buildIdx = dedupedContent.indexOf(" ".repeat(stepIndent) + "- name: Build");
       if (buildIdx >= 0) {
-        setFileContent(fileContent.slice(0, buildIdx) + snippet + "\n\n" + fileContent.slice(buildIdx));
+        setFileContent(dedupedContent.slice(0, buildIdx) + snippet + "\n\n" + dedupedContent.slice(buildIdx));
         return;
       }
     }
 
     // Deploy/Notify → ท้ายสุด (default)
-    setFileContent(fileContent.trimEnd() + "\n\n" + snippet);
+    setFileContent(dedupedContent.trimEnd() + "\n\n" + snippet);
   }, [fileContent, setFileContent, applyMultipleValues]);
 
   if (!open) return null;
@@ -487,6 +556,10 @@ const handleApply = useCallback((code: string) => {
             selectedFile: selectedFile ?? "",
             componentValues: componentValues ?? {},
             provider: provider ?? "github",
+            repoFullName: selectedRepo?.full_name ?? "",
+            branch: selectedBranch ?? "main",
+            repoProvider: selectedRepo?.provider ?? provider ?? "github",
+            pipelineFiles: fileList.map(f => f.fullPath),
           },
         }),
       });

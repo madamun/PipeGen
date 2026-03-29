@@ -3,6 +3,7 @@
  * Used by POST /api/pipeline/analyze.
  */
 
+import { X } from "lucide-react";
 import type { ComponentValues } from "../types/pipeline";
 
 export interface AnalyzeRepoParams {
@@ -47,7 +48,18 @@ export interface AnalyzedConfig extends ComponentValues {
   enable_cache?: boolean;
   cache_path?: string;
   cache_key?: string;
+  // Monorepo / Deep Scan
+  is_monorepo?: boolean;
+  sub_projects?: string[];
+  sub_project_details?: string[];
+  detected_docker_path?: string;
+  existing_ci_files?: string[];
+  has_env_example?: boolean;
+  docker_context?: string;
+  docker_file_flag?: string;
+  all_dockerfiles?: string[];
 }
+X
 
 const DEFAULT_CONFIG: AnalyzedConfig = {
   use_node: false,
@@ -91,6 +103,81 @@ async function fetchRepoFile(
 
   const res = await fetch(url, { headers });
   return res.ok ? res.text() : null;
+}
+
+// === Git Tree API: scan โครงสร้าง repo ทั้งหมด ===
+interface RepoTreeFile {
+  path: string;
+  type: string; // "blob" (file) or "tree" (folder)
+}
+
+async function fetchRepoTree(
+  repoFullName: string,
+  branch: string,
+  provider: "github" | "gitlab",
+  accessToken: string,
+): Promise<RepoTreeFile[]> {
+  try {
+    if (provider === "github") {
+      const res = await fetch(
+        `https://api.github.com/repos/${repoFullName}/git/trees/${branch}?recursive=1`,
+        { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github.v3+json" } }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.tree || []).map((f: any) => ({ path: f.path, type: f.type === "blob" ? "blob" : "tree" }));
+    } else {
+      // GitLab: pagination needed, fetch first 100
+      const res = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodeURIComponent(repoFullName)}/repository/tree?ref=${branch}&recursive=true&per_page=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data || []).map((f: any) => ({ path: f.path, type: f.type === "blob" ? "blob" : "tree" }));
+    }
+  } catch (e) {
+    console.error("[Analyzer] Tree fetch error:", e);
+    return [];
+  }
+}
+
+// === Monorepo detection: หา sub-projects จาก tree ===
+interface SubProject {
+  path: string; // e.g. "frontend", "backend", "packages/api"
+  files: string[]; // files found in this sub-project
+}
+
+function detectSubProjects(tree: RepoTreeFile[]): SubProject[] {
+  const projectIndicators = [
+    "package.json",
+    "requirements.txt",
+    "go.mod",
+    "Cargo.toml",
+    "Dockerfile",
+  ];
+
+  // หา folders ที่มี indicator files
+  const subProjects = new Map<string, string[]>();
+
+  for (const file of tree) {
+    if (file.type !== "blob") continue;
+    const fileName = file.path.split("/").pop() || "";
+    if (!projectIndicators.includes(fileName)) continue;
+
+    const dir = file.path.includes("/")
+      ? file.path.slice(0, file.path.lastIndexOf("/"))
+      : ""; // root
+
+    if (dir === "") continue; // root จัดการแยกแล้ว
+
+    if (!subProjects.has(dir)) subProjects.set(dir, []);
+    subProjects.get(dir)!.push(fileName);
+  }
+
+  return Array.from(subProjects.entries())
+    .map(([path, files]) => ({ path, files }))
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export async function analyzeRepo(
@@ -371,6 +458,113 @@ export async function analyzeRepo(
     } catch (e) {
       console.error("Framework detection error:", e);
     }
+  }
+
+  // 8. Monorepo Deep Scan — ใช้ Git Tree API scan โครงสร้างทั้ง repo
+  try {
+    const tree = await fetchRepoTree(repoFullName, branch, provider, accessToken);
+
+    if (tree.length > 0) {
+      // 8a. หา Dockerfile ทั้งหมด (root + subfolder)
+      const allDockerfiles = tree.filter(f =>
+        f.type === "blob" && (
+          f.path === "Dockerfile" ||
+          f.path.endsWith("/Dockerfile") ||
+          f.path.endsWith("/dockerfile") ||
+          f.path.endsWith(".Dockerfile")
+        )
+      );
+
+      if (allDockerfiles.length > 0) {
+        config.docker_build = true;
+        config.docker_tag = "latest";
+
+        // ถ้า root ไม่มี Dockerfile → ใช้ subfolder แทน
+        const hasRootDockerfile = allDockerfiles.some(f => f.path === "Dockerfile");
+        if (!hasRootDockerfile) {
+          const subDockerfiles = allDockerfiles.filter(f => f.path !== "Dockerfile");
+          if (subDockerfiles.length > 0) {
+            config.detected_docker_path = subDockerfiles[0].path;
+            const dockerDir = subDockerfiles[0].path.replace(/\/[^/]*$/, '') || '.';
+            config.docker_context = dockerDir;
+            config.docker_file_flag = `-f ${subDockerfiles[0].path}`;
+          }
+        }
+        config.all_dockerfiles = allDockerfiles.map(f => f.path);
+      }
+
+      // 8b. หา CI files ที่มีอยู่แล้ว
+      const existingCI = tree.filter(f =>
+        f.type === "blob" && (
+          f.path.startsWith(".github/workflows/") ||
+          f.path === ".gitlab-ci.yml" ||
+          f.path.startsWith(".gitlab/ci/")
+        )
+      );
+      if (existingCI.length > 0) {
+        config.existing_ci_files = existingCI.map(f => f.path);
+      }
+
+      // 8c. Detect sub-projects (monorepo)
+      const subProjects = detectSubProjects(tree);
+
+      if (subProjects.length > 0) {
+        config.is_monorepo = true;
+        config.sub_projects = subProjects.map(sp => sp.path);
+
+        // analyze แต่ละ sub-project
+        const subDetails: string[] = [];
+        for (const sp of subProjects.slice(0, 5)) { // จำกัด 5 sub-projects
+          const subPkg = await fetchFile(`${sp.path}/package.json`);
+          if (subPkg) {
+            try {
+              const pkg = JSON.parse(subPkg) as Record<string, unknown>;
+              const deps = { ...(pkg.dependencies as Record<string, string>), ...(pkg.devDependencies as Record<string, string>) };
+              const parts: string[] = [sp.path];
+
+              // detect framework ในแต่ละ sub-project
+              if (deps?.next) parts.push("Next.js");
+              else if (deps?.nuxt) parts.push("Nuxt");
+              else if (deps?.["@angular/core"]) parts.push("Angular");
+              else if (deps?.vite) parts.push("Vite");
+              else if (deps?.["@nestjs/core"]) parts.push("NestJS");
+              else if (deps?.elysia) parts.push("Elysia");
+              else if (deps?.express) parts.push("Express");
+              else if (deps?.fastify) parts.push("Fastify");
+
+              if (deps?.prisma || deps?.["@prisma/client"]) parts.push("Prisma");
+              if (deps?.vitest) parts.push("Vitest");
+              else if (deps?.jest) parts.push("Jest");
+
+              subDetails.push(parts.join(" → "));
+            } catch { subDetails.push(sp.path); }
+          } else if (sp.files.includes("requirements.txt")) {
+            subDetails.push(`${sp.path} → Python`);
+          } else if (sp.files.includes("go.mod")) {
+            subDetails.push(`${sp.path} → Go`);
+          } else if (sp.files.includes("Cargo.toml")) {
+            subDetails.push(`${sp.path} → Rust`);
+          } else {
+            subDetails.push(sp.path);
+          }
+        }
+        config.sub_project_details = subDetails;
+      }
+
+      // 8d. detect .env files
+      const envFiles = tree.filter(f =>
+        f.type === "blob" && (
+          f.path === ".env.example" ||
+          f.path === ".env.sample" ||
+          f.path === ".env.template"
+        )
+      );
+      if (envFiles.length > 0) {
+        config.has_env_example = true;
+      }
+    }
+  } catch (e) {
+    console.error("[Analyzer] Monorepo scan error:", e);
   }
 
   return config;

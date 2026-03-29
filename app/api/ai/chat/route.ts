@@ -2,7 +2,101 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { getServerSession } from "../../../../packages/server/session";
+import { prisma } from "../../../../packages/server/prisma";
+
 const GEMINI_MODEL = "gemini-2.5-flash";
+
+// ไฟล์ที่จะ fetch จาก repo เพื่อให้ AI เข้าใจ context
+const REPO_FILES_TO_FETCH = [
+  "package.json",
+  "Dockerfile",
+  "docker-compose.yml",
+  "tsconfig.json",
+  ".env.example",
+  "README.md",
+  "prisma/schema.prisma",
+  "requirements.txt",
+  "go.mod",
+  "Cargo.toml",
+];
+
+// หา sub-project package.json จาก Git Tree API
+async function findSubProjectFiles(
+  repoFullName: string,
+  branch: string,
+  provider: string,
+  accessToken: string,
+): Promise<string[]> {
+  try {
+    let treeFiles: { path: string }[] = [];
+    if (provider === "github") {
+      const res = await fetch(
+        `https://api.github.com/repos/${repoFullName}/git/trees/${branch}?recursive=1`,
+        { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github.v3+json" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        treeFiles = data.tree || [];
+      }
+    } else {
+      const res = await fetch(
+        `https://gitlab.com/api/v4/projects/${encodeURIComponent(repoFullName)}/repository/tree?ref=${branch}&recursive=true&per_page=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (res.ok) treeFiles = await res.json();
+    }
+
+    // หา package.json ที่ไม่ใช่ root และไม่อยู่ใน node_modules
+    return treeFiles
+      .filter((f: any) => {
+        const p = f.path;
+        return p.endsWith("/package.json") &&
+          !p.includes("node_modules") &&
+          p.split("/").length <= 3; // จำกัด depth 3 ชั้น
+      })
+      .map((f: any) => f.path)
+      .slice(0, 5); // จำกัด 5 sub-projects
+  } catch {
+    return [];
+  }
+}
+
+async function fetchRepoFiles(
+  repoFullName: string,
+  branch: string,
+  repoProvider: string,
+  accessToken: string,
+): Promise<Record<string, string>> {
+  const files: Record<string, string> = {};
+
+  const fetches = REPO_FILES_TO_FETCH.map(async (filename) => {
+    try {
+      let url: string;
+      const headers: Record<string, string> =
+        repoProvider === "github"
+          ? { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github.v3.raw" }
+          : { Authorization: `Bearer ${accessToken}` };
+
+      if (repoProvider === "github") {
+        url = `https://api.github.com/repos/${repoFullName}/contents/${filename}?ref=${branch}`;
+      } else {
+        url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repoFullName)}/repository/files/${encodeURIComponent(filename)}/raw?ref=${branch}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        let content = await res.text();
+        // จำกัดขนาด (README อาจยาวมาก)
+        if (content.length > 2000) content = content.slice(0, 2000) + "\n... (truncated)";
+        files[filename] = content;
+      }
+    } catch { /* skip */ }
+  });
+
+  await Promise.all(fetches);
+  return files;
+}
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 interface ChatMessage {
@@ -17,10 +111,14 @@ interface RequestBody {
     selectedFile: string;
     componentValues?: Record<string, unknown>;
     provider?: string;
+    repoFullName?: string;
+    branch?: string;
+    repoProvider?: string;
+    pipelineFiles?: string[];
   };
 }
 
-function buildSystemPrompt(context: RequestBody["context"]): string {
+function buildSystemPrompt(context: RequestBody["context"], repoFiles?: Record<string, string>): string {
   const parts = [
     `You are the AI assistant for PipeGen — a visual CI/CD pipeline builder.
 Your job is to help users edit their pipeline YAML. You have access to their current file and UI settings.
@@ -158,8 +256,17 @@ Keep GitLab job names lowercase and matching our system.`,
       );
     }
   }
+    if (repoFiles && Object.keys(repoFiles).length > 0) {
+    parts.push("=== Repository Files (read-only context) ===");
+    for (const [filename, content] of Object.entries(repoFiles)) {
+      parts.push(`--- ${filename} ---\n${content}`);
+    }
+    parts.push("Use these files to understand the project structure, dependencies, and configuration. You can reference them when answering questions about the project.");
+  }
+
   return parts.join("\n\n");
 }
+
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -185,7 +292,91 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const systemPrompt = buildSystemPrompt(context);
+  // Fetch repo files ถ้ามี repo info
+  let repoFiles: Record<string, string> = {};
+  if (context?.repoFullName && context?.branch) {
+    try {
+     const session = await getServerSession(request);
+      if (session?.user?.id) {
+        const rp = context.repoProvider || "github";
+        const account = await prisma.account.findFirst({
+          where: { userId: session.user.id, providerId: rp },
+          select: { accessToken: true },
+        });
+        const token = account?.accessToken;
+        if (token) {
+          repoFiles = await fetchRepoFiles(
+            context.repoFullName,
+            context.branch,
+            rp,
+            token,
+          );
+
+                      // fetch sub-project package.json (monorepo)
+          const subProjectFiles = await findSubProjectFiles(
+            context.repoFullName,
+            context.branch,
+            rp,
+            token,
+          );
+          for (const spFile of subProjectFiles) {
+            if (repoFiles[spFile]) continue; // ข้ามถ้า fetch แล้ว
+            try {
+              let url: string;
+              const h: Record<string, string> =
+                rp === "github"
+                  ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.v3.raw" }
+                  : { Authorization: `Bearer ${token}` };
+              if (rp === "github") {
+                url = `https://api.github.com/repos/${context.repoFullName}/contents/${spFile}?ref=${context.branch}`;
+              } else {
+                url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(context.repoFullName!)}/repository/files/${encodeURIComponent(spFile)}/raw?ref=${context.branch}`;
+              }
+              const res = await fetch(url, { headers: h });
+              if (res.ok) {
+                const content = await res.text();
+                repoFiles[`[sub-project] ${spFile}`] = content.length > 2000 ? content.slice(0, 2000) + "\n... (truncated)" : content;
+              }
+            } catch { /* skip */ }
+          }
+
+          // fetch pipeline files ทั้งหมดที่มีใน repo
+          if (context.pipelineFiles && context.pipelineFiles.length > 0) {
+            const pipelineFetches = context.pipelineFiles
+              .filter(f => f !== context.selectedFile) // ไม่ fetch ไฟล์ที่เปิดอยู่ (มีใน fileContent แล้ว)
+              .map(async (filePath) => {
+                try {
+                  let url: string;
+                  const rp = context.repoProvider || "github";
+                  const headers: Record<string, string> =
+                    rp === "github"
+                      ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.v3.raw" }
+                      : { Authorization: `Bearer ${token}` };
+
+                  if (rp === "github") {
+                    url = `https://api.github.com/repos/${context.repoFullName}/contents/${filePath}?ref=${context.branch}`;
+                  } else {
+                    url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(context.repoFullName!)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${context.branch}`;
+                  }
+
+                  const res = await fetch(url, { headers });
+                  if (res.ok) {
+                    const content = await res.text();
+                    repoFiles[`[pipeline] ${filePath}`] = content.length > 3000 ? content.slice(0, 3000) + "\n... (truncated)" : content;
+                  }
+                } catch { /* skip */ }
+              });
+
+            await Promise.all(pipelineFetches);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[ai/chat] Failed to fetch repo files:", e);
+    }
+  }
+
+  const systemPrompt = buildSystemPrompt(context, repoFiles);
   const contents = messages.map((m) => ({
     role: m.role === "assistant" ? "model" as const : "user" as const,
     parts: [{ text: m.content }],
